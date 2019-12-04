@@ -15,3 +15,5 @@ time_zone = {'EST': pytz.timezone('US/Eastern'),
 topic = ['main', 'economic', 'news']
 
 user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:69.0) Gecko/20100101 Firefox/69.0'
+
+event_list = ['Crude Oil Inventories']
