@@ -1,54 +1,9 @@
 # -*- coding: utf-8 -*-
-import scrapy
 from scrapy import Spider
 from scrapy.crawler import CrawlerProcess
-from scrapy.item import Item
 from config import user_agent, time_zone
-from datetime import datetime, timedelta
-from pytz import timezone
+from datetime import datetime
 import logging
-
-
-class EventItem(Item):
-    event = scrapy.Field()
-
-
-class EventsSchedule(Spider):
-
-    name = 'events_schedule'
-    allowed_domains = ['www.investing.com']
-    start_urls = ['http://www.investing.com/economic-calendar/']
-    custom_settings = {
-        'ITEM_PIPELINES': {
-            'economic_indicators_spider.ScheduleCollectorPipeline': 100
-        }
-    }
-
-    def parse(self, response):
-
-        events = response.xpath("//tr[contains(@id, 'eventRowId')]")
-        item = EventItem()
-
-        for event in events:
-            # Extract event datetime in format: '2019/11/26 16:30:00'
-            event_str = event.xpath(".//@data-event-datetime").extract_first()
-            # Convert string to datetime object
-            event_dt = datetime.strptime(event_str, "%Y/%m/%d %H:%M:%S")
-            event_dt = event_dt.replace(tzinfo=timezone('US/Eastern'))
-            item['event'] = event_dt
-            yield item
-
-
-# list to collect all items
-schedule_items = []
-
-# Pipeline that adds items to the list
-class ScheduleCollectorPipeline:
-    def __init__(self):
-        self.ids_seen = set()
-
-    def process_item(self, item, spider):
-        schedule_items.append(item['event'])
 
 
 class EconomicIndicatorsSpiderSpider(Spider):
@@ -62,14 +17,14 @@ class EconomicIndicatorsSpiderSpider(Spider):
         }
     }
 
-    def __init__(self, countries, importance,  current_dt, freq):
+    def __init__(self, countries, importance,  event_list, current_dt):
 
         super(EconomicIndicatorsSpiderSpider, self).__init__()
 
         self.countries = countries
         self.importance = ['bull' + x for x in importance]
+        self.event_list = event_list
         self.current_dt = current_dt
-        self.freq = freq
 
     def parse(self, response):
 
@@ -82,11 +37,9 @@ class EconomicIndicatorsSpiderSpider(Spider):
             event_datetime = datetime.strptime(datetime_str, "%Y/%m/%d %H:%M:%S")
             event_datetime = event_datetime.replace(tzinfo=time_zone['EST'])
 
-            if not (self.current_dt >= event_datetime and self.current_dt <= event_datetime + timedelta(seconds=self.freq)):
-                print('CONTINUE')
-                continue
-
-            print('NOT CONTINUE, TIME OK')
+            # Return only events that passed
+            # if not self.current_dt >= event_datetime:
+            #     continue
 
             country = event.xpath(".//td/span/@title").extract_first()
 
@@ -101,7 +54,12 @@ class EconomicIndicatorsSpiderSpider(Spider):
                 continue
 
             event_name = event.xpath(".//td[@class='left event']/a/text()").extract_first()
-            event_name = event_name.strip('\r\n\t ')
+            event_name = event_name.strip(' \r\n\t ')
+
+            if event_name not in self.event_list:
+                continue
+
+            print('EVENT NAME: ', event_name)
 
             actual = event.xpath(".//td[contains(@id, 'eventActual')]/text()").extract_first().strip('%M BK')
 
@@ -146,22 +104,14 @@ class ItemsCrawler:
             'LOG_LEVEL': 'INFO'
         })
 
-    def get_indicators(self, countries, importance, current_dt, freq, start_crawler=False):
+    def get_indicators(self, countries, importance, event_list, current_dt, start_crawler=False):
 
         self.crawler.crawl(EconomicIndicatorsSpiderSpider,
-              countries=countries, importance=importance, current_dt=current_dt, freq=freq)
+              countries=countries, importance=importance, event_list=event_list, current_dt=current_dt)
 
+        # CrawlerProcess can be started only once
         if start_crawler:
             self.crawler.start()
 
         return indicators
-
-    def get_schedule(self, start_crawler=False):
-
-        self.crawler.crawl(EventsSchedule)
-
-        if start_crawler:
-            self.crawler.start()
-
-        return schedule_items
 

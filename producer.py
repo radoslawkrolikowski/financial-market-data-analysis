@@ -4,11 +4,9 @@ import json
 import pytz
 import logging
 from kafka import KafkaProducer
-from config import tokens, time_zone, topic
+from config import tokens, time_zone, topic, event_list
 from getMarketData import GetData, get_market_calendar
 from economic_indicators_spider import ItemsCrawler
-
-
 
 
 def get_data_point(source, tokens, timestamp, request=None, function=None, symbol=None, interval=None,\
@@ -67,8 +65,8 @@ def intraday_data(producer, freq, market_hours, current_datetime, source, tokens
     token: dict
         Dictionary of API (keys) tokens. Dictionary keys: 'av_token' and 'iex_token'.
     economic_data: dict
-        Dict of economic input data required to parse indicators, such as datetime objects that represents economic
-        data release schedule ['schedule'], countries of interest ['counties'] or importance of data ['importance'].
+        Dict of economic input data required to parse indicators, such as countries of interest ['counties'],
+        importance of data ['importance'] or event types to get ['event_list'].
     request: str, optional (default=None)
         If source == 'AV':
             Specify request to call API with more complex queries, instead of using: function, symbol, interval.
@@ -94,8 +92,6 @@ def intraday_data(producer, freq, market_hours, current_datetime, source, tokens
     """
 
     start_crawler = True
-    previous_datetime = current_datetime
-    counter = 0
 
     crawler = ItemsCrawler()
 
@@ -108,20 +104,8 @@ def intraday_data(producer, freq, market_hours, current_datetime, source, tokens
         # Send data through kafka producer
         producer.send(topic=topic[0], value=raw_data)
 
-        # First call returns empty dictionary
-        if counter <= 1:
-            economic_data['schedule'] = crawler.get_schedule()
-            print('economic schedule: ', economic_data['schedule'])
-
-        # Get economic indicators
-        if not economic_data['schedule']:
-            indicators = crawler.get_indicators(economic_data['countries'], economic_data['importance'],\
-                        current_datetime, freq, start_crawler)
-        else:
-            for dt in economic_data['schedule']:
-                if current_datetime >= dt and current_datetime <= dt + datetime.timedelta(seconds=freq):
-                    indicators = crawler.get_indicators(economic_data['countries'], economic_data['importance'],\
-                        current_datetime, freq, start_crawler)
+        indicators = crawler.get_indicators(economic_data['countries'], economic_data['importance'], economic_data['event_list'],\
+                                            current_datetime, start_crawler)
 
         start_crawler = False
 
@@ -129,12 +113,6 @@ def intraday_data(producer, freq, market_hours, current_datetime, source, tokens
 
         # Send economic data through kafka producer
         producer.send(topic=topic[1], value=indicators)
-
-        previous_datetime = current_datetime
-
-        # Update economic data release schedule every hour
-        if current_datetime.hour > previous_datetime.hour:
-            economic_data['schedule'] = crawler.get_schedule()
 
         time.sleep(freq)
 
@@ -165,8 +143,8 @@ def start_day_session(producer, freq, source, tokens, economic_data, request=Non
     token: dict
         Dictionary of API (keys) tokens. Dictionary keys: 'av_token' and 'iex_token'.
     economic_data: dict
-        Dict of economic input data required to parse indicators, such as datetime objects that represents economic
-        data release schedule ['schedule'], countries of interest ['counties'] or importance of data ['importance'].
+        Dict of economic input data required to parse indicators, such as countries of interest ['counties'],
+        importance of data ['importance'] or event types to get ['event_list'].
     request: str, optional (default=None)
         If source == 'AV':
             Specify request to call API with more complex queries, instead of using: function, symbol, interval.
@@ -236,7 +214,7 @@ def start_day_session(producer, freq, source, tokens, economic_data, request=Non
 
 freq = 60
 
-economic_data = {'countries': ['United States'], 'importance': ['2', '3']}
+economic_data = {'countries': ['United States'], 'importance': ['2', '3'], 'event_list': event_list}
 
 kafka_servers = ['localhost:9092']
 
