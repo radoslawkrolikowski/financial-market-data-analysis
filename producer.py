@@ -6,7 +6,7 @@ import logging
 from kafka import KafkaProducer
 from config import tokens, time_zone, topic, event_list
 from getMarketData import GetData, get_market_calendar
-from economic_indicators_spider import ItemsCrawler
+from economic_indicators_spider import run_indicator_spider
 
 
 def get_data_point(source, tokens, timestamp, request=None, function=None, symbol=None, interval=None,\
@@ -91,33 +91,29 @@ def intraday_data(producer, freq, market_hours, current_datetime, source, tokens
 
     """
 
-    start_crawler = True
-
-    crawler = ItemsCrawler()
-
     while (current_datetime >= market_hours['market_start']) and (current_datetime <= market_hours['market_end']):
 
-        # Get market data
-        raw_data = get_data_point(source, tokens, current_datetime, request=request, function=function, symbol=symbol,\
-            interval=interval, output_format=output_format)
+        try:
 
-        # Send data through kafka producer
-        producer.send(topic=topic[0], value=raw_data)
+            # Get market data
+            raw_data = get_data_point(source, tokens, current_datetime, request=request, function=function, symbol=symbol,\
+                                      interval=interval, output_format=output_format)
 
-        indicators = crawler.get_indicators(economic_data['countries'], economic_data['importance'], economic_data['event_list'],\
-                                            current_datetime, start_crawler)
+            # Send data through kafka producer
+            producer.send(topic=topic[0], value=raw_data)
 
-        start_crawler = False
+            run_indicator_spider(economic_data['countries'], economic_data['importance'], economic_data['event_list'],\
+                                 current_datetime, producer, topic[1])
 
-        print('INDICATORS: ', indicators)
+            time.sleep(freq)
 
-        # Send economic data through kafka producer
-        producer.send(topic=topic[1], value=indicators)
+            # Update current time
+            current_datetime = pytz.utc.localize(datetime.datetime.now()).astimezone(time_zone['EST'])
 
-        time.sleep(freq)
 
-        # Update current time
-        current_datetime = pytz.utc.localize(datetime.datetime.now()).astimezone(time_zone['EST'])
+        except KeyboardInterrupt:
+            logging.warning('Stopped by the user.')
+            break
 
     else:
         logging.warning('Market is closed.')
@@ -212,9 +208,9 @@ def start_day_session(producer, freq, source, tokens, economic_data, request=Non
         logging.warning('Today market is closed')
 
 
-freq = 60
+freq = 120
 
-economic_data = {'countries': ['United States'], 'importance': ['2', '3'], 'event_list': event_list}
+economic_data = {'countries': ['United States'], 'importance': ['1', '2', '3'], 'event_list': event_list}
 
 kafka_servers = ['localhost:9092']
 
