@@ -4,17 +4,21 @@ from scrapy import Spider
 from scrapy import signals as scrapy_signals
 from scrapy.crawler import Crawler
 from twisted.internet import reactor
+from kafka import KafkaProducer
 from config import user_agent, time_zone
 from datetime import datetime
 from collections import defaultdict
 import logging
 import re
+import json
 import pickle
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 class IndicatorCollectorPipeline:
-    def __init__(self, producer, topic):
-        self.producer = producer
+    def __init__(self, server, topic):
+        self.server = server
         self.topic = topic
         self.items_dict = defaultdict()
 
@@ -25,7 +29,11 @@ class IndicatorCollectorPipeline:
             with open(r"items.pickle", "wb") as output_file:
                 pickle.dump({}, output_file)
 
-            self.prev_items = defaultdict()
+        self.producer = KafkaProducer(bootstrap_servers=server,
+            value_serializer=lambda x:
+            json.dumps(x).encode('utf-8'))
+
+        self.prev_items = defaultdict()
 
     def process_item(self, item, spider):
         self.item = item
@@ -34,7 +42,7 @@ class IndicatorCollectorPipeline:
 
     @classmethod
     def from_crawler(cls, crawler):
-        return cls(producer=crawler.spider.producer,
+        return cls(server=crawler.spider.server,
             topic=crawler.spider.topic)
 
     def close_spider(self, spider):
@@ -43,6 +51,8 @@ class IndicatorCollectorPipeline:
         if new_items:
             # Send economic data through kafka producer
             self.producer.send(topic=self.topic, value=new_items)
+            self.producer.flush()
+            self.producer.close()
 
         with open(r"items.pickle", "wb") as output_file:
             pickle.dump(self.items_dict, output_file)
@@ -59,7 +69,7 @@ class EconomicIndicatorsSpiderSpider(Spider):
         }
     }
 
-    def __init__(self, countries, importance,  event_list, current_dt, producer, topic):
+    def __init__(self, countries, importance,  event_list, current_dt, server, topic):
 
         super(EconomicIndicatorsSpiderSpider, self).__init__()
 
@@ -67,7 +77,7 @@ class EconomicIndicatorsSpiderSpider(Spider):
         self.importance = ['bull' + x for x in importance]
         self.event_list = event_list
         self.current_dt = current_dt
-        self.producer = producer
+        self.server = server
         self.topic = topic
 
     def parse(self, response):
@@ -136,7 +146,7 @@ class EconomicIndicatorsSpiderSpider(Spider):
 
 
 class CrawlerScript(Process):
-    def __init__(self, countries, importance, event_list, current_dt, producer, topic):
+    def __init__(self, countries, importance, event_list, current_dt, server, topic):
 
         Process.__init__(self)
 
@@ -144,13 +154,13 @@ class CrawlerScript(Process):
         self.importance = importance
         self.event_list = event_list
         self.current_dt = current_dt
-        self.producer = producer
+        self.server = server
         self.topic = topic
 
         self.crawler = Crawler(
           EconomicIndicatorsSpiderSpider,
           settings={
-            'USER_AGENT': user_agent,
+            'USER_AGENT': user_agent
           }
         )
 
@@ -158,15 +168,16 @@ class CrawlerScript(Process):
 
     def run(self):
         self.crawler.crawl(self.countries, self.importance, self.event_list, self.current_dt,
-            self.producer, self.topic)
+            self.server, self.topic)
         reactor.run()
 
 
-def run_indicator_spider(countries, importance, event_list, current_dt, producer, topic):
+def run_indicator_spider(countries, importance, event_list, current_dt, server, topic):
 
-    crawler = CrawlerScript(countries, importance, event_list, current_dt, producer, topic)
+    crawler = CrawlerScript(countries, importance, event_list, current_dt, server, topic)
 
     # the script will block here until the crawling is finished
     crawler.start()
     crawler.join()
+
 
