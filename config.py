@@ -12,9 +12,9 @@ time_zone = {'EST': pytz.timezone('US/Eastern'),
     'iex_stock': pytz.timezone('US/Eastern'),
     'iex_forex': pytz.timezone('UTC')}
 
-topic = ['main', 'economic', 'news']
+kafka_config = {'servers':['localhost:9092'], 'topics': ['main', 'economic', 'news']}
 
 user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:69.0) Gecko/20100101 Firefox/69.0'
 
-event_list = ['Crude Oil Inventories', 'ISM Non-Manufacturing PMI', 'ISM Non-Manufacturing Employment',
-              'Services PMI', 'ADP Nonfarm Employment Change']
+event_list = ['Crude Oil Inventories', 'ISM Non-Manufacturing PMI', 'ISM Non-Manufacturing Employment', 'Federal Budget Balance',
+              'Services PMI', 'ADP Nonfarm Employment Change', 'Core CPI', 'CPI', 'Fed Interest Rate Decision']
