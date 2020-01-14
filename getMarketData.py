@@ -7,6 +7,23 @@ import pytz
 import logging
 from config import time_zone
 
+# Function responsible for replacing unwanted characters in dictionary keys
+def change_keys(obj, old, new):
+    """Recursively goes through the dictionary obj and changes keys by
+    replacing old chars with new ones.
+
+    """
+    if isinstance(obj, dict):
+        new_obj = obj.__class__()
+        for k, v in obj.items():
+            new_obj[k.replace(old, new)] = change_keys(v, old, new)
+    elif isinstance(obj, (list, set, tuple)):
+        new_obj = obj.__class__(change_keys(v, old, new) for v in obj)
+    else:
+        return obj
+
+    return new_obj
+
 
 class GetData:
     """Get the data from Alpha Vantage or IEX APIs.
@@ -160,6 +177,9 @@ class GetData:
 
         except requests.exceptions.ConnectionError as msg:
             print(msg)
+
+        # Get rid of unwanted characters from dictionary keys
+        raw_data = change_keys(raw_data, ". ", "_")
 
         return raw_data
 
