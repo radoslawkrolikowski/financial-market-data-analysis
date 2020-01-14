@@ -24,6 +24,37 @@ def change_keys(obj, old, new):
 
     return new_obj
 
+# Casts string to int or float
+def to_number(v):
+    try:
+        if v.isdigit():
+            return int(v)
+        else:
+            return float(v)
+    except ValueError:
+            return v
+
+def value_to_number(obj):
+    """Recursively goes through the dictionary obj and converts strings
+    to ints or floats if possible.
+    """
+    if isinstance(obj, dict):
+        new_obj = obj.__class__()
+        for k, v in obj.items():
+            if isinstance(v, dict):
+                new_obj[k] = value_to_number(v)
+            elif isinstance(v, (list, set, tuple)):
+                new_obj[k] = v.__class__(to_number(lv) for lv in v)
+            else:
+                new_obj[k] = to_number(v)
+
+    elif isinstance(obj, (list, set, tuple)):
+        new_obj = obj.__class__(value_to_number(lv) for lv in obj)
+    else:
+        return obj
+
+    return new_obj
+
 
 class GetData:
     """Get the data from Alpha Vantage or IEX APIs.
@@ -106,7 +137,7 @@ class GetData:
             Time interval between two consecutive data points in the time series. Specify only for INTRADAY
             data and TECHNICAL INDICATORS: 1min, 5min, 15min, 30min, 60min.
         timestamp: datetime.datetime()
-            Timestamp of real-time data.
+            Timestamp of real-time data (EST).
         request: str, optional (default=None)
             Specify request to call API with more complex queries, instead of using: function, symbol, interval.
             For example, call TECHNICAL INDICATORS API:
@@ -145,8 +176,10 @@ class GetData:
 
                 keys_level_1 = list(raw_data.keys())
                 last_dt_str = list(raw_data[keys_level_1[1]].keys())[0]
+
+                # Extract datetime of latest data point (EST)
                 last_dt = datetime.datetime.strptime(last_dt_str, "%Y-%m-%d %H:%M:%S")
-                last_dt = pytz.utc.localize(last_dt).astimezone(time_zone['EST'])
+                last_dt = time_zone['EST'].localize(last_dt)
 
                 # Extract only the last data point
                 raw_data = raw_data[keys_level_1[1]][last_dt_str]
@@ -180,6 +213,9 @@ class GetData:
 
         # Get rid of unwanted characters from dictionary keys
         raw_data = change_keys(raw_data, ". ", "_")
+
+        # Cast string to int or float if possible
+        raw_data = value_to_number(raw_data)
 
         return raw_data
 
