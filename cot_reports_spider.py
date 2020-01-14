@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from billiard import Process
 from scrapy import Spider, Request
 from scrapy import signals as scrapy_signals
@@ -53,7 +52,7 @@ class COTreportsSpiderSpider(Spider):
         super(COTreportsSpiderSpider, self).__init__()
 
         self.report_subject = report_subject
-        self.current_dt = datetime.strftime(current_dt, "%Y/%m/%d %H:%M:%S")
+        self.current_dt = datetime.strftime(current_dt, "%Y-%m-%d %H:%M:%S")
         self.server = server
         self.topic = topic
 
@@ -94,7 +93,7 @@ class COTreportsSpiderSpider(Spider):
             short_open_int = row.xpath(".//td[6]/text()").extract_first().strip(' %')
 
             yield {'Subject': self.report_subject,
-                'Date':  self.current_dt,
+                'Scrap_datetime':  self.current_dt,
                 'Name': name,
                 'long_positions': long_positions,
                 'long_positions_change': long_positions_change,

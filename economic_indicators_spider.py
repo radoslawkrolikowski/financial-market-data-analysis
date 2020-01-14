@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from billiard import Process
 from scrapy import Spider
 from scrapy import signals as scrapy_signals
@@ -21,6 +20,7 @@ class IndicatorCollectorPipeline:
         self.server = server
         self.topic = topic
         self.items_dict = defaultdict()
+        self.prev_items = defaultdict()
 
         try:
             with open(r"items.pickle", "rb") as output_file:
@@ -32,8 +32,6 @@ class IndicatorCollectorPipeline:
         self.producer = KafkaProducer(bootstrap_servers=server,
             value_serializer=lambda x:
             json.dumps(x).encode('utf-8'))
-
-        self.prev_items = defaultdict()
 
     def process_item(self, item, spider):
         self.item = item
@@ -88,10 +86,14 @@ class EconomicIndicatorsSpiderSpider(Spider):
 
             # Extract event datetime in format: '2019/11/26 16:30:00' (EST)
             datetime_str = event.xpath(".//@data-event-datetime").extract_first()
+
+            if not datetime_str:
+                continue
+
             event_datetime = datetime.strptime(datetime_str, "%Y/%m/%d %H:%M:%S")
             event_datetime = event_datetime.replace(tzinfo=time_zone['EST'])
 
-            current_dt_str = datetime.strftime(self.current_dt, "%Y/%m/%d %H:%M:%S")
+            current_dt_str = datetime.strftime(self.current_dt, "%Y-%m-%d %H:%M:%S")
 
             # Return only events that passed
             if not self.current_dt >= event_datetime:
@@ -116,8 +118,8 @@ class EconomicIndicatorsSpiderSpider(Spider):
             if event_name_regex:
                 event_name = event_name_regex[0].strip()
 
-            # if event_name not in self.event_list:
-            #     continue
+            if event_name not in self.event_list:
+                continue
 
             actual = event.xpath(".//td[contains(@id, 'eventActual')]/text()").extract_first().strip('%M BK')
 
