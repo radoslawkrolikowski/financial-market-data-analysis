@@ -1,12 +1,14 @@
 import datetime
 import time
-import json
 import pytz
 import logging
+import json
 from kafka import KafkaProducer
-from config import tokens, time_zone, topic, event_list
+from config import tokens, time_zone, kafka_config, event_list
 from getMarketData import GetData, get_market_calendar
 from economic_indicators_spider import run_indicator_spider
+from cot_reports_spider import run_cot_spider
+from vix_spider import run_vix_spider
 
 
 def get_data_point(source, tokens, timestamp, request=None, function=None, symbol=None, interval=None,\
@@ -45,15 +47,13 @@ def market_hour_to_dt(current_datetime, hour_str):
 
 
 
-def intraday_data(producer, freq, market_hours, current_datetime, source, tokens, economic_data, request=None,\
-                  function=None, symbol=None, interval=None, output_format='json'):
+def intraday_data(freq, market_hours, current_datetime, source, tokens, economic_data, cot=False, vix=False, request=None,\
+                  function=None, symbol=None, interval=None, output_format='json', get_stock_volume=None):
     """Get the intraday data from Alpha Vantage or IEX APIs. Function will call the source API with
     the frequency of 'freq' until market is closed.
 
     Parameters
     ----------
-    producer: KafkaProducer
-        KafkaProducer object that will be used to send the data.
     freq: int
         Frequency of data transmissions in seconds.
     market_hours: dict
@@ -66,7 +66,11 @@ def intraday_data(producer, freq, market_hours, current_datetime, source, tokens
         Dictionary of API (keys) tokens. Dictionary keys: 'av_token' and 'iex_token'.
     economic_data: dict
         Dict of economic input data required to parse indicators, such as countries of interest ['counties'],
-        importance of data ['importance'] or event types to get ['event_list'].
+        importance of data ['importance'], event types to get ['event_list'], cot report subject ['cot'].
+    cot: boolean, optional (default=False)
+        Whether to get COT data.
+    vix: boolean, optional (default=False)
+        Whether to get CBOE VIX .
     request: str, optional (default=None)
         If source == 'AV':
             Specify request to call API with more complex queries, instead of using: function, symbol, interval.
@@ -88,28 +92,57 @@ def intraday_data(producer, freq, market_hours, current_datetime, source, tokens
         Specify only for INTRADAY data and TECHNICAL INDICATORS: 1min, 5min, 15min, 30min, 60min.
     output_format: str, optional (default='json')
         Specify the output format. Available formats: 'json' or 'csv'.
+    get_stock_volume: str, optional (default=None)
+        Pass symbol to return it's volume from AV.
 
     """
+
+    # Instantiate market data kafka producer
+    producer = KafkaProducer(bootstrap_servers=kafka_config['servers'],
+        value_serializer=lambda x:
+        json.dumps(x).encode('utf-8'))
 
     while (current_datetime >= market_hours['market_start']) and (current_datetime <= market_hours['market_end']):
 
         try:
 
+            process_start_time = time.time()
+
             # Get market data
-            raw_data = get_data_point(source, tokens, current_datetime, request=request, function=function, symbol=symbol,\
+            market_data = get_data_point(source, tokens, current_datetime, request=request, function=function, symbol=symbol,\
                                       interval=interval, output_format=output_format)
 
-            # Send data through kafka producer
-            producer.send(topic=topic[0], value=raw_data)
+            # Acquire the Stock Volume from AV (which is not included in IEX)
+            if get_stock_volume and (source != 'AV' and function != 'TIME_SERIES_INTRADAY'):
+                interval = freq // 60 # convert to minutes
+                interval = '{:d}min'.format(interval)
+
+                if interval in ['1min', '5min', '15min', '30min', '60min']:
+                    market_data[0]['volume']  = get_data_point('AV', tokens, current_datetime, function='TIME_SERIES_INTRADAY',
+                        symbol=get_stock_volume, interval=interval, output_format=output_format)
+                else:
+                    logging.warning('"{}" interval is not supported'.format(interval))
+
+
+            # Send market data through kafka producer
+            producer.send(topic=kafka_config['topics'][1], value=market_data)
 
             run_indicator_spider(economic_data['countries'], economic_data['importance'], economic_data['event_list'],\
-                                 current_datetime, producer, topic[1])
+                                 current_datetime, kafka_config['servers'], kafka_config['topics'][1])
 
-            time.sleep(freq)
+            if cot:
+                run_cot_spider(economic_data['cot'], current_datetime, kafka_config['servers'], kafka_config['topics'][1])
+
+            if vix:
+                run_vix_spider(current_datetime, kafka_config['servers'], kafka_config['topics'][1])
+
+            process_end_time = time.time()
+            process_time = process_end_time - process_start_time
+
+            time.sleep(freq - process_time)
 
             # Update current time
-            current_datetime = pytz.utc.localize(datetime.datetime.now()).astimezone(time_zone['EST'])
-
+            current_datetime = pytz.utc.localize(datetime.datetime.utcnow()).astimezone(time_zone['EST'])
 
         except KeyboardInterrupt:
             logging.warning('Stopped by the user.')
@@ -124,14 +157,12 @@ def intraday_data(producer, freq, market_hours, current_datetime, source, tokens
             market_hours['market_end'].tzname()))
 
 
-def start_day_session(producer, freq, source, tokens, economic_data, request=None, function=None, symbol=None,\
-                      interval=None, output_format='json'):
+def start_day_session(freq, source, tokens, economic_data, cot=False, vix=False, request=None, function=None, symbol=None,\
+                      interval=None, output_format='json', get_stock_volume=None):
     """Get the single day market session data from Alpha Vantage or IEX APIs.
 
     Parameters
     ----------
-    producer: KafkaProducer
-        KafkaProducer object that will be used to send the data.
     freq: int
         Frequency of data transmissions in seconds.
     source: str
@@ -140,7 +171,11 @@ def start_day_session(producer, freq, source, tokens, economic_data, request=Non
         Dictionary of API (keys) tokens. Dictionary keys: 'av_token' and 'iex_token'.
     economic_data: dict
         Dict of economic input data required to parse indicators, such as countries of interest ['counties'],
-        importance of data ['importance'] or event types to get ['event_list'].
+        importance of data ['importance'], event types to get ['event_list'], cot report subject ['cot'].
+    cot: boolean, optional (default=False)
+        Whether to get COT data.
+    vix: boolean, optional (default=False)
+        Whether to get CBOE VIX .
     request: str, optional (default=None)
         If source == 'AV':
             Specify request to call API with more complex queries, instead of using: function, symbol, interval.
@@ -162,9 +197,11 @@ def start_day_session(producer, freq, source, tokens, economic_data, request=Non
         Specify only for INTRADAY data and TECHNICAL INDICATORS: 1min, 5min, 15min, 30min, 60min.
     output_format: str, optional (default='json')
         Specify the output format. Available formats: 'json' or 'csv'.
+    get_stock_volume: str, optional (default=None)
+        Pass symbol to return it's volume from AV.
 
     """
-    current_datetime = pytz.utc.localize(datetime.datetime.now()).astimezone(time_zone['EST'])
+    current_datetime = pytz.utc.localize(datetime.datetime.utcnow()).astimezone(time_zone['EST'])
     current_date = current_datetime.date()
 
     market_calendar = get_market_calendar()
@@ -199,8 +236,9 @@ def start_day_session(producer, freq, source, tokens, economic_data, request=Non
 
 
         # Call the function that is responsible for fetching the intraday data
-        intraday_data(producer, freq, market_hours, current_datetime, source, tokens, economic_data, request=request,
-                      function=function, symbol=symbol, interval=interval, output_format=output_format)
+        intraday_data(freq, market_hours, current_datetime, source, tokens, economic_data, cot=cot, vix=vix, request=request,
+                      function=function, symbol=symbol, interval=interval, output_format=output_format,
+                      get_stock_volume=get_stock_volume)
 
     else:
         logging.warning('Current time: {} {}'.format(datetime.datetime.strftime(current_datetime, "%Y-%m-%d %I:%M %p"),\
@@ -208,17 +246,9 @@ def start_day_session(producer, freq, source, tokens, economic_data, request=Non
         logging.warning('Today market is closed')
 
 
-freq = 120
+# Data fetching frequency in seconds
+freq = 60
 
-economic_data = {'countries': ['United States'], 'importance': ['1', '2', '3'], 'event_list': event_list}
+economic_data = {'countries': ['United States'], 'importance': ['1', '2', '3'], 'event_list': event_list, 'cot': 'S&P 500 STOCK INDEX'}
 
-kafka_servers = ['localhost:9092']
-
-producer = KafkaProducer(bootstrap_servers=kafka_servers,
-                         value_serializer=lambda x:
-                         json.dumps(x).encode('utf-8'))
-
-try:
-    start_day_session(producer, freq, 'IEX', tokens, economic_data, request='/stock/spy/news/last/1?')
-finally:
-    producer.close()
+start_day_session(freq, 'IEX', tokens, economic_data, cot=True, vix=True, request='/stock/spy/news/last/1?', get_stock_volume='SPY')
