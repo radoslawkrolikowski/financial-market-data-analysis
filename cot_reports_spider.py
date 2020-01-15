@@ -16,13 +16,13 @@ class COTCollectorPipeline:
     def __init__(self, server, topic):
         self.server = server
         self.topic = topic
-        self.items = []
+        self.items = {}
         self.producer = KafkaProducer(bootstrap_servers=server,
             value_serializer=lambda x:
             json.dumps(x).encode('utf-8'))
 
     def process_item(self, item, spider):
-        self.items.append(item)
+        self.items.update(item)
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -34,6 +34,16 @@ class COTCollectorPipeline:
         self.producer.send(topic=self.topic, value=self.items)
         self.producer.flush()
         self.producer.close()
+
+
+def to_number(v):
+    try:
+        if v.isdigit():
+            return int(v)
+        else:
+            return float(v)
+    except ValueError:
+            return v
 
 
 class COTreportsSpiderSpider(Spider):
@@ -84,23 +94,26 @@ class COTreportsSpiderSpider(Spider):
             if not(('Asset Manager' in name) or ('Leveraged' in name) or ('Managed Money' in name)):
                 continue
 
-            long_positions = row.xpath(".//td[2]/text()").extract_first().strip()
-            long_positions_change = row.xpath(".//td[2]/span/text()").extract_first()
-            long_open_int = row.xpath(".//td[3]/text()").extract_first().strip(' %')
+            name = name.split()[0]
 
-            short_positions = row.xpath(".//td[5]/text()").extract_first().strip()
-            short_positions_change = row.xpath(".//td[5]/span/text()").extract_first()
-            short_open_int = row.xpath(".//td[6]/text()").extract_first().strip(' %')
+            long_positions = row.xpath(".//td[2]/text()").extract_first().strip().replace(",", "")
+            long_positions_change = row.xpath(".//td[2]/span/text()").extract_first().replace(",", "")
+            long_open_int = row.xpath(".//td[3]/text()").extract_first().strip(' %').replace(",", "")
 
-            yield {'Subject': self.report_subject,
-                'Scrap_datetime':  self.current_dt,
-                'Name': name,
-                'long_positions': long_positions,
-                'long_positions_change': long_positions_change,
-                'long_open_int': long_open_int,
-                'short_positions': short_positions,
-                'short_positions_change': short_positions_change,
-                'short_open_int': short_open_int}
+            short_positions = row.xpath(".//td[5]/text()").extract_first().strip().replace(",", "")
+            short_positions_change = row.xpath(".//td[5]/span/text()").extract_first().replace(",", "")
+            short_open_int = row.xpath(".//td[6]/text()").extract_first().strip(' %').replace(",", "")
+
+            yield {'Timestamp':  self.current_dt,
+                '{}'.format(name): {
+                    '{}_long_pos'.format(name): to_number(long_positions),
+                    '{}_long_pos_change'.format(name): to_number(long_positions_change),
+                    '{}_long_open_int'.format(name): to_number(long_open_int),
+                    '{}_short_pos'.format(name): to_number(short_positions),
+                    '{}_short_pos_change'.format(name): to_number(short_positions_change),
+                    '{}_short_open_int'.format(name): to_number(short_open_int)
+                    }
+                }
 
 
 class CrawlerScript(Process):
