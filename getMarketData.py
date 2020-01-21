@@ -109,6 +109,20 @@ class GetData:
 
             if isinstance(raw_data, dict):
                 raw_data['timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
+
+                # Make dictionary keys in DEEP book distinctive
+                if '/deep/book' in request:
+                    symbol = list(raw_data.keys())[0]
+                    for i, level in enumerate(raw_data[symbol]['bids']):
+                        level['bid_{:d}'.format(i)] = level.pop('price')
+                        level['bid_{:d}_size'.format(i)] = level.pop('size')
+                        level.pop('timestamp')
+
+                    for i, level in enumerate(raw_data[symbol]['asks']):
+                        level['ask_{:d}'.format(i)] = level.pop('price')
+                        level['ask_{:d}_size'.format(i)] = level.pop('size')
+                        level.pop('timestamp')
+
             if isinstance(raw_data, list):
                 for mssg in raw_data:
                     mssg['timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
