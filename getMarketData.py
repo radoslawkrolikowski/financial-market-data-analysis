@@ -108,26 +108,25 @@ class GetData:
                 raw_data = pd.read_csv(io.StringIO(req.content.decode('utf-8')))
 
             if isinstance(raw_data, dict):
-                raw_data['timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
+                raw_data['Timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
 
-                # Make dictionary keys in DEEP book distinctive
+                # Change the structure of the message and make dictionary keys in DEEP book distinctive
                 if '/deep/book' in request:
                     symbol = list(raw_data.keys())[0]
-                    raw_data['book'] = raw_data.pop(symbol)
 
-                    for i, level in enumerate(raw_data['book']['bids']):
-                        level['bid_{:d}'.format(i)] = level.pop('price')
-                        level['bid_{:d}_size'.format(i)] = level.pop('size')
-                        level.pop('timestamp')
+                    for i, level in enumerate(raw_data[symbol]['bids']):
+                        raw_data['bids_{:d}'.format(i)] = {'bid_{:d}'.format(i): level['price'],
+                                                           'bid_{:d}_size'.format(i): level['size']}
 
-                    for i, level in enumerate(raw_data['book']['asks']):
-                        level['ask_{:d}'.format(i)] = level.pop('price')
-                        level['ask_{:d}_size'.format(i)] = level.pop('size')
-                        level.pop('timestamp')
+                    for i, level in enumerate(raw_data[symbol]['asks']):
+                        raw_data['asks_{:d}'.format(i)] = {'ask_{:d}'.format(i): level['price'],
+                                                           'ask_{:d}_size'.format(i): level['size']}
+
+                    del raw_data[symbol]
 
             if isinstance(raw_data, list):
                 for mssg in raw_data:
-                    mssg['timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
+                    mssg['Timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
 
         except requests.exceptions.ConnectionError as mssg:
             print(mssg)
