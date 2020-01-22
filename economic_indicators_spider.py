@@ -46,9 +46,18 @@ class IndicatorCollectorPipeline:
     def close_spider(self, spider):
         new_items = [self.items_dict[k] for k in set(self.items_dict) - set(self.prev_items)]
 
+        items_to_send = {}
+
         if new_items:
+
+            for item in new_items:
+                del item['Schedule_datetime']
+                del item['Event']
+
+                items_to_send.update(item)
+
             # Send economic data through kafka producer
-            self.producer.send(topic=self.topic, value=new_items)
+            self.producer.send(topic=self.topic, value=items_to_send)
             self.producer.flush()
             self.producer.close()
 
@@ -130,21 +139,20 @@ class EconomicIndicatorsSpiderSpider(Spider):
             if actual == '\xa0':
                 continue
 
-            previous_actual_diff = str(float(previous) - float(actual))
+            previous_actual_diff = float(previous) - float(actual)
 
             if forecast != '\xa0':
-                forecast_actual_diff = str(float(forecast) - float(actual))
+                forecast_actual_diff = float(forecast) - float(actual)
 
-            yield {'Scrap_datetime': current_dt_str,
+            yield {'Timestamp': current_dt_str,
                 'Schedule_datetime': datetime_str,
-                'Event': event_name,
-                'Importance': importance_label[-1],
-                'Actual': actual,
-                'Previous': previous,
-                'Forecast': forecast if forecast != '\xa0' else None,
-                'Prev_actual_diff': previous_actual_diff,
-                'Forc_actual_diff': forecast_actual_diff if forecast != '\xa0' else None}
-
+                'Event': event_name.replace(" ", "_"),
+                '{}'.format(event_name.replace(" ", "_")): {
+                    'Actual': float(actual),
+                    'Prev_actual_diff': previous_actual_diff,
+                    'Forc_actual_diff': forecast_actual_diff if forecast != '\xa0' else None
+                    }
+                }
 
 
 class CrawlerScript(Process):
