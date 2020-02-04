@@ -283,6 +283,15 @@ df_deep = df_deep \
 # Apply watermark
 df_deep = df_deep.withWatermark("Timestamp_vol", "5 minutes")
 
+# Calculate weighted average for bid's side orders
+bids_prices = [F.col('bid_{0:d}'.format(i)) for i in range(bid_levels)]
+bids_sizes = [F.col('bid_{0:d}_size'.format(i)) for i in range(bid_levels)]
+
+weightedAverageFunc = F.sum(price * size for price, size in zip(bids_prices, bids_sizes)) / F.sum(size for size in bids_sizes)
+
+df_deep = df_deep \
+  .withColumn("bids_wa_ord", weightedAverageFunc)
+
 # df_deep.printSchema()
 # query = df_deep.writeStream.format("console").start()
 # query.awaitTermination()
