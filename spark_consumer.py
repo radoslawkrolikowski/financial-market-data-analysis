@@ -86,8 +86,8 @@ df_vix = df_vix.withWatermark("Timestamp_vix", "5 minutes")
 # PYSPARK IN VERSION 2.4.4 IS NOT CAPABLE OF CALCULATING EFFICIENTLY MOVING AVERAGE. DESPITE USING WINDOW FUNCTION, THE
 # RESULTING DATA FRAME CONSISTS OF 'N' LATEST AVERAGES INSTEAD OF ONLY RECENT ONE, THUS IT NEEDS ADDITIONAL FILTERING, THEN
 # LATEST MOVING AVERAGE HAVE TO BE JOIN WITH ORIGINAL FRAME. ENTIRE OPERATION IS DIFFICULT AND INEFFICIENT, MOREOVER IN CURRENT
-# VERSION AGGREGATION CAN ONLY BE DONE IN UPDATE MODE, WHILE JOINING IS POSSIBLE ONLY IN APPEND MODE. THEREFOR MOVING AVERAGE
-# WILL BE CALCULATED IN FURTHER STEPS.
+# VERSION AGGREGATION CAN ONLY BE DONE IN UPDATE MODE, WHILE JOINING IS POSSIBLE ONLY IN APPEND MODE (MUTUALLY EXCLUSIVE OPERATIONS).
+# THEREFOR MOVING AVERAGE WILL BE CALCULATED USING OTHER FRAMEWORK.
 
 # Create temporary column 'id_timestamp' that contains constantly incremental values with fixed time intervals
 # that represent continuous stream of data (bars or candles on a chart) over which the window will be apllied.
@@ -281,20 +281,32 @@ df_deep = df_deep \
   .withColumn("Timestamp_deep_floor", (F.floor(F.unix_timestamp("Timestamp_deep") / (5 * 60)) * 5 * 60).cast("timestamp"))
 
 # Apply watermark
-df_deep = df_deep.withWatermark("Timestamp_vol", "5 minutes")
+df_deep = df_deep.withWatermark("Timestamp_deep", "5 minutes")
 
 # Calculate weighted average for bid's side orders
 bids_prices = [F.col('bid_{0:d}'.format(i)) for i in range(bid_levels)]
 bids_sizes = [F.col('bid_{0:d}_size'.format(i)) for i in range(bid_levels)]
 
-weightedAverageFunc = F.sum(price * size for price, size in zip(bids_prices, bids_sizes)) / F.sum(size for size in bids_sizes)
+bidsWeightedAverage = sum(F.when(price.isNotNull() & size.isNotNull(), ((F.col("bid_0") - price) * size)).otherwise(0) \
+    for price, size in zip(bids_prices, bids_sizes)) / sum(F.when(size.isNotNull(), size).otherwise(0) for size in bids_sizes)
 
 df_deep = df_deep \
-  .withColumn("bids_wa_ord", weightedAverageFunc)
+  .withColumn("bids_ord_WA", bidsWeightedAverage)
 
-# df_deep.printSchema()
-# query = df_deep.writeStream.format("console").start()
-# query.awaitTermination()
+# Calculate weighted average for ask's side orders
+asks_prices = [F.col('ask_{0:d}'.format(i)) for i in range(ask_levels)]
+asks_sizes = [F.col('ask_{0:d}_size'.format(i)) for i in range(ask_levels)]
+
+asksWeightedAverage = sum(F.when(price.isNotNull() & size.isNotNull(), ((F.col("ask_0") - price) * size)).otherwise(0) \
+    for price, size in zip(asks_prices, asks_sizes)) / sum(F.when(size.isNotNull(), size).otherwise(0) for size in asks_sizes)
+
+df_deep = df_deep \
+  .withColumn("asks_ord_WA", asksWeightedAverage)
+
+
+df_deep.printSchema()
+query = df_deep.writeStream.format("console").start()
+query.awaitTermination()
 
 # df_joined = df_volume.join(df_vix,  F.expr("""
 #     (Timestamp_vol_floor = Timestamp_vix_floor AND
