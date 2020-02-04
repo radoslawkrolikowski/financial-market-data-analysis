@@ -4,8 +4,12 @@ findspark.init('/root/spark-2.4.4-bin-hadoop2.7')
 
 from pyspark.sql import SparkSession
 from pyspark.sql import types
-from pyspark.sql.functions import from_json, col, to_timestamp, explode, array
+from pyspark.sql import functions as F
+from pyspark.sql.functions import udf
 from config import event_list
+from kafka import SimpleClient
+from kafka.common import OffsetRequestPayload
+import logging
 
 # Instantiate spark session
 # We have to add the following jars to intergrate spark with kafka:
@@ -23,11 +27,34 @@ spark = SparkSession.builder \
         "file:///root/Downloads/jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar") \
     .getOrCreate()
 
+# Set number of output partitions (speed up processing)
+spark.conf.set("spark.sql.shuffle.partitions", 5)
+
 # Set log level
 spark.sparkContext.setLogLevel("ERROR")
 
+@udf(returnType=types.LongType())
+def count_kafka_mssg(topic, server):
+    """Returns the total number of messages (sum of all partitions) in given kafka topic
+
+    """
+    client = SimpleClient(server)
+
+    partitions = client.topic_partitions[topic]
+    offset_requests = [OffsetRequestPayload(topic, p, -1, 1) for p in partitions.keys()]
+
+    offsets_responses = client.send_offset_request(offset_requests)
+
+    total_mssg = 0
+
+    for r in offsets_responses:
+        logging.info("partition = {}, offset = {}".format(r.partition, r.offsets[0]))
+        total_mssg += int(r.offsets[0])
+
+    return total_mssg
+
 # Define VIX schema
-# {"VIX": 13.04, "Timestamp": "2020-01-09 09:41:26"}
+# {"VIX": 16.04, "Timestamp": "2020-01-14 10:17:36"}
 schema_vix = types.StructType([
     types.StructField('VIX', types.FloatType()),
     types.StructField('Timestamp', types.StringType())
@@ -38,18 +65,55 @@ df_vix = spark \
   .readStream \
   .format("kafka") \
   .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "vix") \
+  .option("subscribe", "test2") \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
-  .select(from_json(col("value"), schema_vix).alias("VIX")) \
+  .select(F.from_json(F.col("value"), schema_vix).alias("VIX")) \
   .select("VIX.VIX", "VIX.Timestamp") \
-  .withColumn("Timestamp", to_timestamp(col("Timestamp"), "yyyy-MM-dd HH:mm:ss"))
+  .withColumn("Timestamp_vix", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
+  .drop("Timestamp")
+  # .withColumn("ID", count_kafka_mssg(F.lit('vix'), F.lit('localhost:9092'))) # unique constantly incremental value
+
+# Round timestamps down to nearest 5 minutes
+df_vix = df_vix \
+  .withColumn("Timestamp_vix_floor", (F.floor(F.unix_timestamp("Timestamp_vix") / (5 * 60)) * 5 * 60).cast("timestamp"))
+
+# Apply watermark
+df_vix = df_vix.withWatermark("Timestamp_vix", "5 minutes")
+
+# PYSPARK IN VERSION 2.4.4 IS NOT CAPABLE OF CALCULATING EFFICIENTLY MOVING AVERAGE. DESPITE USING WINDOW FUNCTION, THE
+# RESULTING DATA FRAME CONSISTS OF 'N' LATEST AVERAGES INSTEAD OF ONLY RECENT ONE, THUS IT NEEDS ADDITIONAL FILTERING, THEN
+# LATEST MOVING AVERAGE HAVE TO BE JOIN WITH ORIGINAL FRAME. ENTIRE OPERATION IS DIFFICULT AND INEFFICIENT, MOREOVER IN CURRENT
+# VERSION AGGREGATION CAN ONLY BE DONE IN UPDATE MODE, WHILE JOINING IS POSSIBLE ONLY IN APPEND MODE. THEREFOR MOVING AVERAGE
+# WILL BE CALCULATED IN FURTHER STEPS.
+
+# Create temporary column 'id_timestamp' that contains constantly incremental values with fixed time intervals
+# that represent continuous stream of data (bars or candles on a chart) over which the window will be apllied.
+# ID of value 1 equals 1 time interval that is represented by id_timestamp as 1 second.
+# id_timestamp dosen't represent right point in time, it is used only to incorporate fixed time intervals.
+
+# df_vix = df_vix.withColumn('id_timestamp', F.to_timestamp(F.from_unixtime(F.col('ID'))))
+
+# Calculate 100 minute moving average
+# time_interval = 5 min (corresponds to id_timestamp = 1 second)
+# number_of_data_points (IDs) = 100 / 5 = 20 (how many bars we need?)
+# id_timestamp_seconds = 20 sec (equals number_of_data_points)
+# 20 sec = 20 data_points, time_interval = 1 second
+
+# windowedCounts = df_vix \
+#     .withWatermark("id_timestamp", "20 seconds") \
+#     .groupBy(
+#         F.window("id_timestamp", "20 seconds", "1 seconds")) \
+#     .avg("VIX")
+
+# df_vix = df_vix.withColumn("org_window", F.window(F.col("id_timestamp"), "20 seconds", "1 seconds"))
+# windowedCounts = windowedCounts.join(df_vix, F.col("org_window") == F.col('window'))
 
 
 # Define Volume schema
-# [{'volume': {'1_open': 327.62, '2_high': 327.62, '3_low': 327.51,
-# '4_close': 327.51, '5_volume': 85330, 'timestamp': '2020-01-14 10:17:36'}}]
+# [{'volume': {'1_open': 327.62, '2_high': 327.68, '3_low': 327.46,
+# '4_close': 327.51, '5_volume': 85330, 'Timestamp': '2020-01-14 10:17:36'}}]
 schema_volume = types.StructType([
     types.StructField('volume', types.StructType([
         types.StructField('1_open', types.FloatType()),
@@ -57,7 +121,7 @@ schema_volume = types.StructType([
         types.StructField('3_low', types.FloatType()),
         types.StructField('4_close', types.FloatType()),
         types.StructField('5_volume', types.IntegerType()),
-        types.StructField('timestamp', types.StringType())
+        types.StructField('Timestamp', types.StringType())
     ])
 )])
 
@@ -66,13 +130,22 @@ df_volume = spark \
   .readStream \
   .format("kafka") \
   .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "volume") \
+  .option("subscribe", "test") \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
-  .select(from_json(col("value"), schema_volume).alias("Volume")) \
+  .select(F.from_json(F.col("value"), schema_volume).alias("Volume")) \
   .select("Volume.volume.*") \
-  .withColumn("timestamp", to_timestamp(col("timestamp"), "yyyy-MM-dd HH:mm:ss"))
+  .withColumn("Timestamp_vol", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
+  .drop("Timestamp")
+
+# Round timestamps down to nearest 5 minutes
+df_volume = df_volume \
+  .withColumn("Timestamp_vol_floor", (F.floor(F.unix_timestamp("Timestamp_vol") / (5 * 60)) * 5 * 60).cast("timestamp"))
+
+# Apply watermark
+df_volume = df_volume.withWatermark("Timestamp_vol", "5 minutes")
+
 
 # Define COT reports schema
 # {"Timestamp": "2020-01-15 11:29:58", "Asset": {"Asset_long_pos": 304136, "Asset_long_pos_change": 10.0,
@@ -101,10 +174,18 @@ df_cot = spark \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
-  .withColumn("value", explode(array("value"))) \
-  .select(from_json(col("value"), schema_cot).alias("COT")) \
+  .withColumn("value", F.explode(F.array("value"))) \
+  .select(F.from_json(F.col("value"), schema_cot).alias("COT")) \
   .select("COT.Timestamp", "COT.Asset.*", "COT.Leveraged.*") \
-  .withColumn("Timestamp", to_timestamp(col("Timestamp"), "yyyy-MM-dd HH:mm:ss"))
+  .withColumn("Timestamp_cot", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
+  .drop("Timestamp")
+
+# Round timestamps down to nearest 5 minutes
+df_cot = df_cot \
+  .withColumn("Timestamp_cot_floor", (F.floor(F.unix_timestamp("Timestamp_cot") / (5 * 60)) * 5 * 60).cast("timestamp"))
+
+# Apply watermark
+df_cot = df_cot.withWatermark("Timestamp_cot", "5 minutes")
 
 # Define Indicators schema
 # {"Timestamp": "2020-01-16 11:55:55", "Crude_Oil_Inventories":{"Actual": "15.5", "Prev_actual_diff": "0.5",
@@ -127,8 +208,18 @@ df_ind = spark \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
-  .select(from_json(col("value"), schema_ind).alias("IND")) \
-  .select(*["IND.{0}.{1}".format(ind, val) for val in values for ind in event_list])
+  .select(F.from_json(F.col("value"), schema_ind).alias("IND")) \
+  .select("IND.Timestamp", *[F.col("IND.{0}.{1}".format(ind, val)).alias("{0}_{1}".format(ind, val)) \
+    for val in values for ind in event_list]) \
+  .withColumn("Timestamp_ind", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
+  .drop("Timestamp")
+
+# Round timestamps down to nearest 5 minutes
+df_ind = df_ind \
+  .withColumn("Timestamp_ind_floor", (F.floor(F.unix_timestamp("Timestamp_ind") / (5 * 60)) * 5 * 60).cast("timestamp"))
+
+# Apply watermark
+df_ind = df_ind.withWatermark("Timestamp_ind", "5 minutes")
 
 # Define market data schema for IEX DEEP (aggregated size of resting displayed orders at a price and side)
 # {'Timestamp': '2020-01-22 14:45:48',
@@ -164,21 +255,27 @@ df_deep = spark \
   .readStream \
   .format("kafka") \
   .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "economic") \
+  .option("subscribe", "test") \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
-  .select(from_json(col("value"), schema_deep).alias("DEEP")) \
+  .select(F.from_json(F.col("value"), schema_deep).alias("DEEP")) \
   .select("DEEP.Timestamp", *['DEEP.bids_{0:d}.bid_{0:d}'.format(i) for i in range(bid_levels)] + \
         ['DEEP.bids_{0:d}.bid_{0:d}_size'.format(i) for i in range(bid_levels)] + \
         ['DEEP.asks_{0:d}.ask_{0:d}'.format(i) for i in range(ask_levels)] + \
-        ['DEEP.asks_{0:d}.ask_{0:d}_size'.format(i) for i in range(ask_levels)])
+        ['DEEP.asks_{0:d}.ask_{0:d}_size'.format(i) for i in range(ask_levels)]) \
+  .withColumn("Timestamp_deep", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
+  .drop("Timestamp")
 
+# Round timestamps down to nearest 5 minutes
+df_deep = df_deep \
+  .withColumn("Timestamp_deep_floor", (F.floor(F.unix_timestamp("Timestamp_deep") / (5 * 60)) * 5 * 60).cast("timestamp"))
 
-df_deep.printSchema()
-query = df_deep.writeStream.format("console").start()
-query.awaitTermination()
+# Apply watermark
+df_deep = df_deep.withWatermark("Timestamp_vol", "5 minutes")
 
-
+# df_deep.printSchema()
+# query = df_deep.writeStream.format("console").start()
+# query.awaitTermination()
 
 {'Timestamp': '2020-01-22 14:45:48', 'bids_0': {'bid_0': 332.28, 'bid_0_size': 500}, 'bids_1': {'bid_1': 332.25, 'bid_1_size': 500}, 'bids_2': {'bid_2': 332.23, 'bid_2_size': 500}, 'bids_3': {'bid_3': 332.2, 'bid_3_size': 500}, 'bids_4': {'bid_4': 332.18, 'bid_4_size': 500}, 'bids_5': {'bid_5': 332.15, 'bid_5_size': 500}, 'bids_6': {'bid_6': 280.21, 'bid_6_size': 100}, 'asks_0': {'ask_0': 332.33, 'ask_0_size': 500}, 'asks_1': {'ask_1': 332.35, 'ask_1_size': 500}, 'asks_2': {'ask_2': 332.38, 'ask_2_size': 500},'asks_3': {'ask_3': 332.41, 'ask_3_size': 500}}
