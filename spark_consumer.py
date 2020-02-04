@@ -147,6 +147,14 @@ df_volume = df_volume \
 # Apply watermark
 df_volume = df_volume.withWatermark("Timestamp_vol", "5 minutes")
 
+# Calculate wick percentage
+df_volume = df_volume \
+    .withColumn("candle_size", F.col("2_high") - F.col("3_low")) \
+    .withColumn("wick_size", F.when(F.col("4_close") >= F.col("1_open"), (F.col("2_high") - F.col("4_close"))) \
+        .otherwise(F.col("3_low") - F.col("4_close"))) \
+    .withColumn("wick_prct", F.col("wick_size") / F.col("candle_size")) \
+    .drop("candle_size") \
+    .drop("wick_size")
 
 # Define COT reports schema
 # {"Timestamp": "2020-01-15 11:29:58", "Asset": {"Asset_long_pos": 304136, "Asset_long_pos_change": 10.0,
