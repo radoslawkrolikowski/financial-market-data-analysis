@@ -296,4 +296,18 @@ df_deep = df_deep \
 # query = df_deep.writeStream.format("console").start()
 # query.awaitTermination()
 
+# df_joined = df_volume.join(df_vix,  F.expr("""
+#     (Timestamp_vol_floor = Timestamp_vix_floor AND
+#     Timestamp_vix >= Timestamp_vol AND
+#     Timestamp_vix <= Timestamp_vol + interval 5 minutes)
+#     """)).dropDuplicates()
+
+# df_vix = df_vix.drop("Timestamp_vix")
+# df_volume = df_volume.drop("Timestamp_vol")
+
+# df_joined.printSchema()
+# query = df_joined.writeStream.outputMode("append").option("truncate", False).format("console").start()
+# # query = Window_df.writeStream.format("console").start()
+# query.awaitTermination()
+
 {'Timestamp': '2020-01-22 14:45:48', 'bids_0': {'bid_0': 332.28, 'bid_0_size': 500}, 'bids_1': {'bid_1': 332.25, 'bid_1_size': 500}, 'bids_2': {'bid_2': 332.23, 'bid_2_size': 500}, 'bids_3': {'bid_3': 332.2, 'bid_3_size': 500}, 'bids_4': {'bid_4': 332.18, 'bid_4_size': 500}, 'bids_5': {'bid_5': 332.15, 'bid_5_size': 500}, 'bids_6': {'bid_6': 280.21, 'bid_6_size': 100}, 'asks_0': {'ask_0': 332.33, 'ask_0_size': 500}, 'asks_1': {'ask_1': 332.35, 'ask_1_size': 500}, 'asks_2': {'ask_2': 332.38, 'ask_2_size': 500},'asks_3': {'ask_3': 332.41, 'ask_3_size': 500}}
