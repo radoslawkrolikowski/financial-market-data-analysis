@@ -310,6 +310,17 @@ df_deep = df_deep \
   .withColumn("delta", sum(F.when(size.isNotNull(), size).otherwise(0) for size in asks_sizes) - \
     sum(F.when(size.isNotNull(), size).otherwise(0) for size in bids_sizes))
 
+# Calculate Micro-Price (according to Gatheral and Oomen)
+# LaTex formula:
+# I_{t} \cdot P_t^a + (1 - I_{t}) \cdot  P_t^b
+# where:
+# P_t^a, P_t^b - best ask and bid price respectively
+# I_{t} = \frac{V_t^b}{V_t^b + V_t^a}
+I_t = ((F.col("bid_0_size")) / ((F.col("bid_0_size") + F.col("ask_0_size"))))
+
+df_deep = df_deep \
+  .withColumn("micro_price", (I_t * F.col("ask_0") + (1 - I_t) * F.col("bid_0")))
+
 df_deep.printSchema()
 query = df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()
 # query = Window_df.writeStream.format("console").start()
