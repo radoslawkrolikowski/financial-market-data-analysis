@@ -15,7 +15,6 @@ import logging
 # We have to add the following jars to intergrate spark with kafka:
 # spark-sql-kafka, kafka-clients, spark-streaming-kafka-0-10-assembly
 # where 0-10 is the kafka broker version, 2.11-2.4.4 is spark version,
-# use proper jars according to your versions.
 spark = SparkSession.builder \
     .master("local") \
     .appName("Stock_data_streaming") \
@@ -27,7 +26,7 @@ spark = SparkSession.builder \
         "file:///root/Downloads/jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar") \
     .getOrCreate()
 
-# Set number of output partitions (speed up processing)
+# Set number of output partitions (low values speed up processing)
 spark.conf.set("spark.sql.shuffle.partitions", 5)
 
 # Set log level
@@ -54,7 +53,7 @@ def count_kafka_mssg(topic, server):
     return total_mssg
 
 # Define VIX schema
-# {"VIX": 16.04, "Timestamp": "2020-01-14 10:17:36"}
+# {"VIX": 16.04, "Timestamp": "2020-02-07 09:26:12"}
 schema_vix = types.StructType([
     types.StructField('VIX', types.FloatType()),
     types.StructField('Timestamp', types.StringType())
@@ -65,7 +64,7 @@ df_vix = spark \
   .readStream \
   .format("kafka") \
   .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "test2") \
+  .option("subscribe", "vix") \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
@@ -81,7 +80,6 @@ df_vix = df_vix \
 
 # Apply watermark
 df_vix = df_vix.withWatermark("Timestamp_vix", "5 minutes")
-
 
 # PYSPARK IN VERSION 2.4.4 IS NOT CAPABLE OF CALCULATING EFFICIENTLY MOVING AVERAGE. DESPITE USING WINDOW FUNCTION, THE
 # RESULTING DATA FRAME CONSISTS OF 'N' LATEST AVERAGES INSTEAD OF ONLY RECENT ONE, THUS IT NEEDS ADDITIONAL FILTERING, THEN
@@ -108,35 +106,29 @@ df_vix = df_vix.withWatermark("Timestamp_vix", "5 minutes")
 #         F.window("id_timestamp", "20 seconds", "1 seconds")) \
 #     .avg("VIX")
 
-# df_vix = df_vix.withColumn("org_window", F.window(F.col("id_timestamp"), "20 seconds", "1 seconds"))
-# windowedCounts = windowedCounts.join(df_vix, F.col("org_window") == F.col('window'))
-
-
 # Define Volume schema
-# [{'volume': {'1_open': 327.62, '2_high': 327.68, '3_low': 327.46,
-# '4_close': 327.51, '5_volume': 85330, 'Timestamp': '2020-01-14 10:17:36'}}]
+# {'1_open': 334.02, '2_high': 334.11, '3_low': 333.91, '4_close': 333.96,
+#  '5_volume': 1061578, 'Timestamp': '2020-02-06 16:00:00'}
 schema_volume = types.StructType([
-    types.StructField('volume', types.StructType([
-        types.StructField('1_open', types.FloatType()),
-        types.StructField('2_high', types.FloatType()),
-        types.StructField('3_low', types.FloatType()),
-        types.StructField('4_close', types.FloatType()),
-        types.StructField('5_volume', types.IntegerType()),
-        types.StructField('Timestamp', types.StringType())
+    types.StructField('1_open', types.FloatType()),
+    types.StructField('2_high', types.FloatType()),
+    types.StructField('3_low', types.FloatType()),
+    types.StructField('4_close', types.FloatType()),
+    types.StructField('5_volume', types.IntegerType()),
+    types.StructField('Timestamp', types.StringType())
     ])
-)])
 
 # Construct a streaming DataFrame that reads from 'volume' topic
 df_volume = spark \
   .readStream \
   .format("kafka") \
   .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "test") \
+  .option("subscribe", "volume") \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
   .select(F.from_json(F.col("value"), schema_volume).alias("Volume")) \
-  .select("Volume.volume.*") \
+  .select("Volume.*") \
   .withColumn("Timestamp_vol", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
   .drop("Timestamp")
 
@@ -197,8 +189,8 @@ df_cot = df_cot \
 df_cot = df_cot.withWatermark("Timestamp_cot", "5 minutes")
 
 # Define Indicators schema
-# {"Timestamp": "2020-01-16 11:55:55", "Crude_Oil_Inventories":{"Actual": "15.5", "Prev_actual_diff": "0.5",
-# "Forc_actual_diff": "1.0"}, "Building_Permits":{"Actual": "242", "Prev_actual_diff": "20", "Forc_actual_diff": "-15"}}
+# {"Timestamp": "2020-02-07 09:54:48", "Nonfarm_Payrolls": {"Actual": 225.0, "Prev_actual_diff": -78.0, "Forc_actual_diff": -65.0},
+#  "Unemployment_Rate": {"Actual": 3.6, "Prev_actual_diff": -0.10000000000000009, "Forc_actual_diff": -0.10000000000000009}}
 schema_ind = types.StructType([types.StructField('Timestamp', types.StringType())])
 
 event_list = [event.replace(" ", "_") for event in event_list]
@@ -231,7 +223,7 @@ df_ind = df_ind \
 df_ind = df_ind.withWatermark("Timestamp_ind", "5 minutes")
 
 # Define market data schema for IEX DEEP (aggregated size of resting displayed orders at a price and side)
-# {'Timestamp': '2020-01-22 14:45:48',
+# {'Timestamp': '2020-01-14 10:17:55',
 #  'bids_0': {'bid_0': 332.28, 'bid_0_size': 500},
 #  'bids_1': {'bid_1': 332.25, 'bid_1_size': 500},
 #  'bids_2': {'bid_2': 332.23, 'bid_2_size': 500},
@@ -264,7 +256,7 @@ df_deep = spark \
   .readStream \
   .format("kafka") \
   .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "test") \
+  .option("subscribe", "deep") \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
@@ -284,6 +276,8 @@ df_deep = df_deep \
 df_deep = df_deep.withWatermark("Timestamp_deep", "5 minutes")
 
 # Calculate weighted average for bid's side orders
+# LaTex formula:
+# \frac{\sum_0^n (price_{0} - price_{n}) \cdot size_{n}}{\sum_0^n size_{n}}
 bids_prices = [F.col('bid_{0:d}'.format(i)) for i in range(bid_levels)]
 bids_sizes = [F.col('bid_{0:d}_size'.format(i)) for i in range(bid_levels)]
 
@@ -303,23 +297,16 @@ asksWeightedAverage = sum(F.when(price.isNotNull() & size.isNotNull(), ((F.col("
 df_deep = df_deep \
   .withColumn("asks_ord_WA", asksWeightedAverage)
 
+# Calculate Order Volume Imbalance
+# LaTex formula:
+# \frac{V_t^b - V_t^a}{V_t^b + V_t^a}
+# where Vtb and Vta denotes the volume at the best bid and at the best ask, respectively
+df_deep = df_deep \
+  .withColumn("vol_imbalance", ((F.col("bid_0_size") - F.col("ask_0_size")) / ((F.col("bid_0_size") + F.col("ask_0_size")))))
 
 df_deep.printSchema()
-query = df_deep.writeStream.format("console").start()
+query = df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()
+# query = Window_df.writeStream.format("console").start()
 query.awaitTermination()
 
-# df_joined = df_volume.join(df_vix,  F.expr("""
-#     (Timestamp_vol_floor = Timestamp_vix_floor AND
-#     Timestamp_vix >= Timestamp_vol AND
-#     Timestamp_vix <= Timestamp_vol + interval 5 minutes)
-#     """)).dropDuplicates()
-
-# df_vix = df_vix.drop("Timestamp_vix")
-# df_volume = df_volume.drop("Timestamp_vol")
-
-# df_joined.printSchema()
-# query = df_joined.writeStream.outputMode("append").option("truncate", False).format("console").start()
-# # query = Window_df.writeStream.format("console").start()
-# query.awaitTermination()
-
-{'Timestamp': '2020-01-22 14:45:48', 'bids_0': {'bid_0': 332.28, 'bid_0_size': 500}, 'bids_1': {'bid_1': 332.25, 'bid_1_size': 500}, 'bids_2': {'bid_2': 332.23, 'bid_2_size': 500}, 'bids_3': {'bid_3': 332.2, 'bid_3_size': 500}, 'bids_4': {'bid_4': 332.18, 'bid_4_size': 500}, 'bids_5': {'bid_5': 332.15, 'bid_5_size': 500}, 'bids_6': {'bid_6': 280.21, 'bid_6_size': 100}, 'asks_0': {'ask_0': 332.33, 'ask_0_size': 500}, 'asks_1': {'ask_1': 332.35, 'ask_1_size': 500}, 'asks_2': {'ask_2': 332.38, 'ask_2_size': 500},'asks_3': {'ask_3': 332.41, 'ask_3_size': 500}}
+{'Timestamp': '2020-01-14 10:17:55', 'bids_0': {'bid_0': 332.28, 'bid_0_size': 500}, 'bids_1': {'bid_1': 332.25, 'bid_1_size': 500}, 'bids_2': {'bid_2': 332.23, 'bid_2_size': 500}, 'bids_3': {'bid_3': 332.2, 'bid_3_size': 500}, 'bids_4': {'bid_4': 332.18, 'bid_4_size': 500}, 'bids_5': {'bid_5': 332.15, 'bid_5_size': 500}, 'bids_6': {'bid_6': 280.21, 'bid_6_size': 100}, 'asks_0': {'ask_0': 332.33, 'ask_0_size': 500}, 'asks_1': {'ask_1': 332.35, 'ask_1_size': 500}, 'asks_2': {'ask_2': 332.38, 'ask_2_size': 500},'asks_3': {'ask_3': 332.41, 'ask_3_size': 500}}
