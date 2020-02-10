@@ -7,6 +7,7 @@ from pyspark.sql import types
 from pyspark.sql import functions as F
 from pyspark.sql.functions import udf
 from config import event_list, mysql_user, mysql_password
+from config import get_cot, get_vix, get_stock_volume
 from kafka import SimpleClient
 from kafka.common import OffsetRequestPayload
 import logging
@@ -415,37 +416,58 @@ df_deep = df_deep \
   .drop("week_of_month")
 
 # Join all streaming DataFrames together
-df_joined = df_deep \
-  .join(df_vix,  F.expr("""
-    (Timestamp_deep_floor = Timestamp_vix_floor AND
-    Timestamp_vix >= Timestamp_deep AND
-    Timestamp_vix <= Timestamp_deep + interval 3 minutes)
-    """)) \
-  .join(df_volume,  F.expr("""
-    (Timestamp_deep_floor = Timestamp_vol_floor AND
-    Timestamp_vol >= Timestamp_deep AND
-    Timestamp_vol <= Timestamp_deep + interval 3 minutes)
-    """)) \
-  .join(df_cot,  F.expr("""
-    (Timestamp_deep_floor = Timestamp_cot_floor AND
-    Timestamp_cot >= Timestamp_deep AND
-    Timestamp_cot <= Timestamp_deep + interval 3 minutes)
-    """)) \
-  .join(df_ind,  F.expr("""
-    (Timestamp_deep_floor = Timestamp_ind_floor AND
-    Timestamp_ind >= Timestamp_deep AND
-    Timestamp_ind <= Timestamp_deep + interval 3 minutes)
-    """)) \
-  .dropDuplicates()
+df_joined = df_deep.select("*")
 
-# df_joined = df_joined \
-#   .withColumnRenamed("Timestamp_deep", "Timestamp") \
-#   .drop("Timestamp_vix") \
-#   .drop("Timestamp_vol") \
+if get_vix:
+    df_joined = df_joined \
+      .join(df_vix,  F.expr("""
+        (Timestamp_deep_floor = Timestamp_vix_floor AND
+        Timestamp_vix >= Timestamp_deep AND
+        Timestamp_vix <= Timestamp_deep + interval 3 minutes)
+        """)) \
+      .drop("Timestamp_vix") \
+      .drop("Timestamp_vix_floor")
 
+if get_stock_volume:
+    df_joined = df_joined \
+      .join(df_volume,  F.expr("""
+        (Timestamp_deep_floor = Timestamp_vol_floor AND
+        Timestamp_vol >= Timestamp_deep AND
+        Timestamp_vol <= Timestamp_deep + interval 3 minutes)
+        """)) \
+      .drop("Timestamp_vol") \
+      .drop("Timestamp_vol_floor")
+
+if get_cot:
+    df_joined = df_joined \
+      .join(df_cot,  F.expr("""
+        (Timestamp_deep_floor = Timestamp_cot_floor AND
+        Timestamp_cot >= Timestamp_deep AND
+        Timestamp_cot <= Timestamp_deep + interval 3 minutes)
+          """)) \
+      .drop("Timestamp_cot") \
+      .drop("Timestamp_cot_floor")
+
+df_joined = df_joined \
+    .join(df_ind,  F.expr("""
+      (Timestamp_deep_floor = Timestamp_ind_floor AND
+      Timestamp_ind >= Timestamp_deep AND
+      Timestamp_ind <= Timestamp_deep + interval 3 minutes)
+      """)) \
+    .drop("Timestamp_ind") \
+    .drop("Timestamp_ind_floor") \
+    .drop("Timestamp_deep_floor") \
+    .withColumnRenamed("Timestamp_deep", "Timestamp") \
+    .dropDuplicates()
+
+# Write stream to console (debug purposes)
 df_joined.printSchema()
-query = df_joined.writeStream.outputMode("append").option("truncate", False).format("console").start()
-# query = Window_df.writeStream.format("console").start()
-query.awaitTermination()
+# df_ind.writeStream.outputMode("append").option("truncate", False).format("console").start()
+df_joined.writeStream.outputMode("append").option("truncate", False).format("console").start().awaitTermination()
 
-{'Timestamp': '2020-01-14 10:17:55', 'bids_0': {'bid_0': 332.28, 'bid_0_size': 500}, 'bids_1': {'bid_1': 332.25, 'bid_1_size': 500}, 'bids_2': {'bid_2': 332.23, 'bid_2_size': 500}, 'bids_3': {'bid_3': 332.2, 'bid_3_size': 500}, 'bids_4': {'bid_4': 332.18, 'bid_4_size': 500}, 'bids_5': {'bid_5': 332.15, 'bid_5_size': 500}, 'bids_6': {'bid_6': 280.21, 'bid_6_size': 100}, 'asks_0': {'ask_0': 332.33, 'ask_0_size': 500}, 'asks_1': {'ask_1': 332.35, 'ask_1_size': 500}, 'asks_2': {'ask_2': 332.38, 'ask_2_size': 500},'asks_3': {'ask_3': 332.41, 'ask_3_size': 500}}
+# query = df_joined \
+#   .writeStream \
+#   .outputMode('append') \
+#   .foreachBatch(write_stream_to_mysql) \
+#   .start() \
+#   .awaitTermination()
