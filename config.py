@@ -16,8 +16,11 @@ kafka_config = {'servers':['localhost:9092'], 'topics': ['vix', 'volume', 'cot',
 user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:69.0) Gecko/20100101 Firefox/69.0'
 
 mysql_user = 'admin'
-
 mysql_password = 'admin'
+
+get_cot = True
+get_vix = True
+get_stock_volume = 'SPY'
 
 event_list = ['Crude Oil Inventories', 'ISM Non-Manufacturing PMI', 'ISM Non-Manufacturing Employment',
     'Services PMI', 'ADP Nonfarm Employment Change', 'Core CPI', 'Fed Interest Rate Decision', 'Building Permits',
@@ -31,3 +34,4 @@ for event in temp_event_list:
     empty_ind_dict.setdefault(event, {})
     for value in event_values:
         empty_ind_dict[event].setdefault(value, None)
+
