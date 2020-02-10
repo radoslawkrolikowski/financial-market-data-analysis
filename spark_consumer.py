@@ -64,6 +64,24 @@ def count_kafka_mssg(topic, server):
 
     return total_mssg
 
+def write_stream_to_mysql(dataFrame, id):
+    """Writes each batch of streaming dataFrame to MySQL/MariaDB
+
+    """
+    db_properties = {"user": mysql_user,
+        "password": mysql_password,
+        "driver": mysql_driver}
+
+    if dataFrame.rdd.isEmpty():
+        pass
+    else:
+        dataFrame \
+          .write \
+          .jdbc(url=mysql_jdbc_url,
+            table=mysql_table_name,
+            mode='append',
+            properties=db_properties)
+
 # Define VIX schema
 # {"VIX": 16.04, "Timestamp": "2020-02-07 09:26:12"}
 schema_vix = types.StructType([
