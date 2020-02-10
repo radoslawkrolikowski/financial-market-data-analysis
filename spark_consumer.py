@@ -321,6 +321,52 @@ I_t = ((F.col("bid_0_size")) / ((F.col("bid_0_size") + F.col("ask_0_size"))))
 df_deep = df_deep \
   .withColumn("micro_price", (I_t * F.col("ask_0") + (1 - I_t) * F.col("bid_0")))
 
+# Bid-Ask Spread
+df_deep = df_deep \
+  .withColumn("spread", F.col("bid_0") - F.col('ask_0'))
+
+# Calculate the bid and ask price relative to best values
+for i, price in enumerate(asks_prices):
+    df_deep = df_deep \
+      .withColumn("ask_{:d}_temp".format(i), (F.col("ask_0") - price))
+
+for i, price in enumerate(bids_prices):
+    df_deep = df_deep \
+      .withColumn("bid_{:d}_temp".format(i), (F.col("bid_0") - price))
+
+# Drop old price levels
+for i in range(ask_levels):
+    df_deep = df_deep \
+      .drop("ask_{:d}".format(i))
+
+for i in range(bid_levels):
+    df_deep = df_deep \
+      .drop("bid_{:d}".format(i))
+
+# Rename columns
+for i in range(ask_levels):
+    df_deep = df_deep \
+      .withColumnRenamed("ask_{:d}_temp".format(i), "ask_{:d}".format(i))
+
+for i in range(ask_levels):
+    df_deep = df_deep \
+      .withColumnRenamed("bid_{:d}_temp".format(i), "bid_{:d}".format(i))
+
+# Extract the day of the week as a number ("u")
+df_deep = df_deep \
+  .withColumn("week_day", F.date_format(F.col("Timestamp_deep"), "u").cast("integer"))
+
+# Extract the week of the month as a number ("W")
+df_deep = df_deep \
+  .withColumn("week_of_month", F.date_format(F.col("Timestamp_deep"), "W"))
+
+# Session start (first 2 hours following market opening)
+df_deep = df_deep \
+  .withColumn("Time", F.date_format('Timestamp_deep', 'H:m:s')) \
+  .withColumn('session_start', F.when((F.split("Time", ":")[0].cast("integer") >= 11) & \
+    (F.split("Time", ":")[1].cast("integer") >= 30), 0).otherwise(1)) \
+  .drop("Time")
+
 df_deep.printSchema()
 query = df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()
 # query = Window_df.writeStream.format("console").start()
