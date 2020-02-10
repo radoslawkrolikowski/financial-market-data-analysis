@@ -6,10 +6,17 @@ from pyspark.sql import SparkSession
 from pyspark.sql import types
 from pyspark.sql import functions as F
 from pyspark.sql.functions import udf
-from config import event_list
+from config import event_list, mysql_user, mysql_password
 from kafka import SimpleClient
 from kafka.common import OffsetRequestPayload
 import logging
+
+mysql_hostname = 'localhost'
+mysql_port = '3306'
+mysql_database_name = 'stock_data'
+mysql_table_name = 'stock_data_joined'
+mysql_driver = 'com.mysql.jdbc.Driver'
+mysql_jdbc_url = 'jdbc:mysql://' + mysql_hostname + ':' + mysql_port + '/' + mysql_database_name
 
 # Instantiate spark session
 # We have to add the following jars to intergrate spark with kafka:
