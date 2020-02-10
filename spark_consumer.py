@@ -384,8 +384,37 @@ df_deep = df_deep \
   .withColumn("week_4", F.when(F.col("week_of_month") == 4, 1).otherwise(0)) \
   .drop("week_of_month")
 
-df_deep.printSchema()
-query = df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()
+# Join all streaming DataFrames together
+df_joined = df_deep \
+  .join(df_vix,  F.expr("""
+    (Timestamp_deep_floor = Timestamp_vix_floor AND
+    Timestamp_vix >= Timestamp_deep AND
+    Timestamp_vix <= Timestamp_deep + interval 3 minutes)
+    """)) \
+  .join(df_volume,  F.expr("""
+    (Timestamp_deep_floor = Timestamp_vol_floor AND
+    Timestamp_vol >= Timestamp_deep AND
+    Timestamp_vol <= Timestamp_deep + interval 3 minutes)
+    """)) \
+  .join(df_cot,  F.expr("""
+    (Timestamp_deep_floor = Timestamp_cot_floor AND
+    Timestamp_cot >= Timestamp_deep AND
+    Timestamp_cot <= Timestamp_deep + interval 3 minutes)
+    """)) \
+  .join(df_ind,  F.expr("""
+    (Timestamp_deep_floor = Timestamp_ind_floor AND
+    Timestamp_ind >= Timestamp_deep AND
+    Timestamp_ind <= Timestamp_deep + interval 3 minutes)
+    """)) \
+  .dropDuplicates()
+
+# df_joined = df_joined \
+#   .withColumnRenamed("Timestamp_deep", "Timestamp") \
+#   .drop("Timestamp_vix") \
+#   .drop("Timestamp_vol") \
+
+df_joined.printSchema()
+query = df_joined.writeStream.outputMode("append").option("truncate", False).format("console").start()
 # query = Window_df.writeStream.format("console").start()
 query.awaitTermination()
 
