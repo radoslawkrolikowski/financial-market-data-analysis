@@ -18,6 +18,12 @@ user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:69.0) Gecko/20100101 Firefox/69
 mysql_user = 'admin'
 mysql_password = 'admin'
 
+mysql_hostname = 'localhost'
+mysql_port = '3306'
+
+mysql_database_name = 'stock_data'
+mysql_table_name = 'stock_data_joined'
+
 get_cot = True
 get_vix = True
 get_stock_volume = 'SPY'
