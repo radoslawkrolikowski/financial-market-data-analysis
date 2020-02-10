@@ -304,6 +304,12 @@ df_deep = df_deep \
 df_deep = df_deep \
   .withColumn("vol_imbalance", ((F.col("bid_0_size") - F.col("ask_0_size")) / ((F.col("bid_0_size") + F.col("ask_0_size")))))
 
+# Calculate Delta indicator
+# Delta is the difference between the ask and bid traded volume
+df_deep = df_deep \
+  .withColumn("delta", sum(F.when(size.isNotNull(), size).otherwise(0) for size in asks_sizes) - \
+    sum(F.when(size.isNotNull(), size).otherwise(0) for size in bids_sizes))
+
 df_deep.printSchema()
 query = df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()
 # query = Window_df.writeStream.format("console").start()
