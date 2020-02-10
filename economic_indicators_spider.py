@@ -4,7 +4,7 @@ from scrapy import signals as scrapy_signals
 from scrapy.crawler import Crawler
 from twisted.internet import reactor
 from kafka import KafkaProducer
-from config import user_agent, time_zone
+from config import user_agent, time_zone, empty_ind_dict
 from datetime import datetime
 from collections import defaultdict
 import logging
@@ -16,9 +16,10 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 class IndicatorCollectorPipeline:
-    def __init__(self, server, topic):
+    def __init__(self, server, topic, current_dt):
         self.server = server
         self.topic = topic
+        self.current_dt = current_dt
         self.items_dict = defaultdict()
         self.prev_items = defaultdict()
 
@@ -41,12 +42,14 @@ class IndicatorCollectorPipeline:
     @classmethod
     def from_crawler(cls, crawler):
         return cls(server=crawler.spider.server,
-            topic=crawler.spider.topic)
+            topic=crawler.spider.topic,
+            current_dt=crawler.spider.current_dt)
 
     def close_spider(self, spider):
         new_items = [self.items_dict[k] for k in set(self.items_dict) - set(self.prev_items)]
 
-        items_to_send = {}
+        items_to_send = empty_ind_dict
+        items_to_send["Timestamp"] = datetime.strftime(self.current_dt, "%Y-%m-%d %H:%M:%S")
 
         if new_items:
 
@@ -56,10 +59,10 @@ class IndicatorCollectorPipeline:
 
                 items_to_send.update(item)
 
-            # Send economic data through kafka producer
-            self.producer.send(topic=self.topic, value=items_to_send)
-            self.producer.flush()
-            self.producer.close()
+        # Send economic data through kafka producer
+        self.producer.send(topic=self.topic, value=items_to_send)
+        self.producer.flush()
+        self.producer.close()
 
         with open(r"items.pickle", "wb") as output_file:
             pickle.dump(self.items_dict, output_file)
