@@ -22,15 +22,20 @@ mysql_jdbc_url = 'jdbc:mysql://' + mysql_hostname + ':' + mysql_port + '/' + mys
 # We have to add the following jars to intergrate spark with kafka:
 # spark-sql-kafka, kafka-clients, spark-streaming-kafka-0-10-assembly
 # where 0-10 is the kafka broker version, 2.11-2.4.4 is spark version,
+# use proper jars according to your versions.
+# To integrate with MySQL/MariaDB we have to add the following file:
+# mysql-connector-java-5.1.48.jar
 spark = SparkSession.builder \
     .master("local") \
     .appName("Stock_data_streaming") \
     .config("spark.jars", "file:///root/Downloads/jar_files/spark-sql-kafka-0-10_2.11-2.4.4.jar,"\
         "file:///root/Downloads/jar_files/kafka-clients-2.0.0.jar,"\
-        "file:///root/Downloads/jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar") \
+        "file:///root/Downloads/jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar,"\
+        "file:///root/Downloads/jar_files/mysql-connector-java-5.1.48.jar") \
     .config("spark.driver.extraClassPath", "file:///root/Downloads/jar_files/spark-sql-kafka-0-10_2.11-2.4.4.jar,"\
         "file:///root/Downloads/jar_files/kafka-clients-2.0.0.jar,"\
-        "file:///root/Downloads/jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar") \
+        "file:///root/Downloads/jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar,"\
+        "file:///root/Downloads/jar_files/mysql-connector-java-5.1.48.jar") \
     .getOrCreate()
 
 # Set number of output partitions (low values speed up processing)
