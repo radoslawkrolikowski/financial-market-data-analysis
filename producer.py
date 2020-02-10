@@ -102,39 +102,41 @@ def intraday_data(freq, market_hours, current_datetime, source, tokens, economic
         value_serializer=lambda x:
         json.dumps(x).encode('utf-8'))
 
-    while (current_datetime >= market_hours['market_start']) and (current_datetime <= market_hours['market_end']):
+    while True: # (current_datetime >= market_hours['market_start']) and (current_datetime <= market_hours['market_end']):
 
         try:
 
             process_start_time = time.time()
 
             # Get market data
-            market_data = get_data_point(source, tokens, current_datetime, request=request, function=function, symbol=symbol,\
-                                      interval=interval, output_format=output_format)
+            # market_data = get_data_point(source, tokens, current_datetime, request=request, function=function, symbol=symbol,\
+            #                           interval=interval, output_format=output_format)
 
             # Acquire the Stock Volume from AV (which is not included in IEX)
-            if get_stock_volume and (source != 'AV' and function != 'TIME_SERIES_INTRADAY'):
-                interval = freq // 60 # convert to minutes
-                interval = '{:d}min'.format(interval)
+            # if get_stock_volume and (source != 'AV' and function != 'TIME_SERIES_INTRADAY'):
+            #     interval = freq // 60 # convert to minutes
+            #     interval = '{:d}min'.format(interval)
 
-                if interval in ['1min', '5min', '15min', '30min', '60min']:
-                    market_data[0]['volume']  = get_data_point('AV', tokens, current_datetime, function='TIME_SERIES_INTRADAY',
-                        symbol=get_stock_volume, interval=interval, output_format=output_format)
-                else:
-                    logging.warning('"{}" interval is not supported'.format(interval))
+            #     if interval in ['1min', '5min', '15min', '30min', '60min']:
+            #         volume  = get_data_point('AV', tokens, current_datetime, function='TIME_SERIES_INTRADAY',
+            #             symbol=get_stock_volume, interval=interval, output_format=output_format)
 
+            #         producer.send(topic=kafka_config['topics'][1], value=volume)
+
+            #     else:
+            #         logging.warning('"{}" interval is not supported'.format(interval))
 
             # Send market data through kafka producer
-            producer.send(topic=kafka_config['topics'][1], value=market_data)
+            # producer.send(topic=kafka_config['topics'][4], value=market_data)
 
             run_indicator_spider(economic_data['countries'], economic_data['importance'], economic_data['event_list'],\
-                                 current_datetime, kafka_config['servers'], kafka_config['topics'][1])
+                                 current_datetime, kafka_config['servers'], kafka_config['topics'][3])
 
-            if cot:
-                run_cot_spider(economic_data['cot'], current_datetime, kafka_config['servers'], kafka_config['topics'][1])
+            # if cot:
+            #     run_cot_spider(economic_data['cot'], current_datetime, kafka_config['servers'], kafka_config['topics'][2])
 
-            if vix:
-                run_vix_spider(current_datetime, kafka_config['servers'], kafka_config['topics'][1])
+            # if vix:
+            #     run_vix_spider(current_datetime, kafka_config['servers'], kafka_config['topics'][0])
 
             process_end_time = time.time()
             process_time = process_end_time - process_start_time
@@ -247,8 +249,11 @@ def start_day_session(freq, source, tokens, economic_data, cot=False, vix=False,
 
 
 # Data fetching frequency in seconds
-freq = 60
+freq = 60 * 5
 
 economic_data = {'countries': ['United States'], 'importance': ['1', '2', '3'], 'event_list': event_list, 'cot': 'S&P 500 STOCK INDEX'}
 
-start_day_session(freq, 'IEX', tokens, economic_data, cot=True, vix=True, request='/stock/spy/news/last/1?', get_stock_volume='SPY')
+start_day_session(freq, 'IEX', tokens, economic_data, cot=True, vix=True, request='/deep/book?symbols=spy&', get_stock_volume='SPY')
+
+producer = KafkaProducer(bootstrap_servers=kafka_config['servers'], value_serializer=lambda x: json.dumps(x).encode('utf-8'))
+
