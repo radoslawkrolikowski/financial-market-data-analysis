@@ -367,6 +367,23 @@ df_deep = df_deep \
     (F.split("Time", ":")[1].cast("integer") >= 30), 0).otherwise(1)) \
   .drop("Time")
 
+# Machine Learning Pipelines in current version of Pyspark cannot be fitted into
+# Streaming DataFrames (only static DataFrames are supported)
+# Therefore, manual oneHotEncoding will be performed
+df_deep = df_deep \
+  .withColumn("day_1", F.when(F.col("week_day") == 1, 1).otherwise(0)) \
+  .withColumn("day_2", F.when(F.col("week_day") == 2, 1).otherwise(0)) \
+  .withColumn("day_3", F.when(F.col("week_day") == 3, 1).otherwise(0)) \
+  .withColumn("day_4", F.when(F.col("week_day") == 4, 1).otherwise(0)) \
+  .drop("week_day")
+
+df_deep = df_deep \
+  .withColumn("week_1", F.when(F.col("week_of_month") == 1, 1).otherwise(0)) \
+  .withColumn("week_2", F.when(F.col("week_of_month") == 2, 1).otherwise(0)) \
+  .withColumn("week_3", F.when(F.col("week_of_month") == 3, 1).otherwise(0)) \
+  .withColumn("week_4", F.when(F.col("week_of_month") == 4, 1).otherwise(0)) \
+  .drop("week_of_month")
+
 df_deep.printSchema()
 query = df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()
 # query = Window_df.writeStream.format("console").start()
