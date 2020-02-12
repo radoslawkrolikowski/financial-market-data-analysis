@@ -1,9 +1,10 @@
 import mysql.connector
 from mysql.connector import errorcode
 from config import mysql_user, mysql_password, mysql_hostname, mysql_database_name, mysql_table_name
-from config import bid_levels, ask_levels, get_vix, get_cot, get_stock_volume, temp_event_list, event_values
+from config import bid_levels, ask_levels, get_vix, get_cot, get_stock_volume, event_list, event_values
+from config import volume_MA_periods
 
-# Conenct to MySQL server
+# Connect to MySQL server
 try:
     cnx = mysql.connector.connect(host=mysql_hostname, user=mysql_user, password=mysql_password)
 except mysql.connector.Error as err:
@@ -62,10 +63,26 @@ cot_statement = ", Asset_long_pos MEDIUMINT" + \
     ", Leveraged_short_pos_change FLOAT(6,1)" + \
     ", Leveraged_short_open_int FLOAT(4,1)" if get_cot else ""
 
-ind_statement = "".join([", {}_{} FLOAT(5,1)".format(event, value) for event in temp_event_list for value in event_values])
+ind_statement = "".join([", {}_{} FLOAT(5,1)".format(event, value) for event in event_list for value in event_values])
 
 main_statement = "CREATE TABLE IF NOT EXISTS " + mysql_table_name  + "(Timestamp DATETIME PRIMARY KEY"\
     + deep_statement + vix_statement + vol_statement + cot_statement + ind_statement + ")"
 
 # Create table if not exists
 cursor.execute(main_statement)
+
+# Create VIEW with calculated Volume Moving Averages
+if volume_MA_periods:
+    volume_MA_statement = ""
+    vol_view_fields = ""
+    for period in volume_MA_periods:
+        volume_MA_statement += "AVG(5_volume) OVER (ORDER BY Timestamp ROWS BETWEEN {} PRECEDING AND CURRENT ROW) AS vol_MA{}, "\
+            .format(period - 1, period)
+        vol_view_fields += ", vol_MA{}".format(period)
+    volume_MA_statement = volume_MA_statement.strip(", ")
+
+    volume_MA_statement = "CREATE OR REPLACE VIEW vol_MA(Timestamp{}) AS SELECT Timestamp, ".format(vol_view_fields)\
+        + volume_MA_statement + " FROM {};".format(mysql_table_name)
+
+    cursor.execute(volume_MA_statement)
+
