@@ -2,7 +2,7 @@ import mysql.connector
 from mysql.connector import errorcode
 from config import mysql_user, mysql_password, mysql_hostname, mysql_database_name, mysql_table_name
 from config import bid_levels, ask_levels, get_vix, get_cot, get_stock_volume, event_list, event_values
-from config import volume_MA_periods
+from config import volume_MA_periods, price_MA_periods, delta_MA_periods, bollinger_bands_period, bollinger_bands_std
 
 # Connect to MySQL server
 try:
@@ -25,11 +25,11 @@ cursor.execute("CREATE DATABASE IF NOT EXISTS {}".format(mysql_database_name))
 # Use database
 cursor.execute("USE {}".format(mysql_database_name))
 
-# Define SQL statements to create a table
+# Define SQL statements used to create a table
 deep_statement = "".join([", bid_{:d}_size SMALLINT".format(level) for level in range(bid_levels)]) + \
-    "".join([", bid_{:d} FLOAT(6,2)".format(level) for level in range(bid_levels)]) + \
+    "".join([", bid_{:d} FLOAT(6,2)".format(level) for level in range(1, bid_levels)]) + \
     "".join([", ask_{:d}_size SMALLINT".format(level) for level in range(ask_levels)]) + \
-    "".join([", ask_{:d} FLOAT(6,2)".format(level) for level in range(ask_levels)]) + \
+    "".join([", ask_{:d} FLOAT(6,2)".format(level) for level in range(1, ask_levels)]) + \
     ", bids_ord_WA FLOAT(6,4), asks_ord_WA FLOAT(6,4)" + \
     ", vol_imbalance FLOAT(7,4)" + \
     ", delta SMALLINT" + \
@@ -66,7 +66,7 @@ cot_statement = ", Asset_long_pos MEDIUMINT" + \
 ind_statement = "".join([", {}_{} FLOAT(5,1)".format(event, value) for event in event_list for value in event_values])
 
 main_statement = "CREATE TABLE IF NOT EXISTS " + mysql_table_name  + "(Timestamp DATETIME PRIMARY KEY"\
-    + deep_statement + vix_statement + vol_statement + cot_statement + ind_statement + ")"
+    + deep_statement + vix_statement + vol_statement + cot_statement + ind_statement + ");"
 
 # Create table if not exists
 cursor.execute(main_statement)
@@ -86,3 +86,46 @@ if volume_MA_periods:
 
     cursor.execute(volume_MA_statement)
 
+# VIEW for Price Moving Averages
+if price_MA_periods:
+    price_MA_statement = ""
+    price_view_fields = ""
+    for period in price_MA_periods:
+        price_MA_statement += "AVG(4_close) OVER (ORDER BY Timestamp ROWS BETWEEN {} PRECEDING AND CURRENT ROW) AS price_MA{}, "\
+            .format(period - 1, period)
+        price_view_fields += ", price_MA{}".format(period)
+    price_MA_statement = price_MA_statement.strip(", ")
+
+    price_MA_statement = "CREATE OR REPLACE VIEW price_MA(Timestamp{}) AS SELECT Timestamp, ".format(price_view_fields)\
+        + price_MA_statement + " FROM {};".format(mysql_table_name)
+
+    cursor.execute(price_MA_statement)
+
+# VIEW for Delta indicator Moving Averages
+if delta_MA_periods:
+    delta_MA_statement = ""
+    delta_view_fields = ""
+    for period in delta_MA_periods:
+        delta_MA_statement += "AVG(delta) OVER (ORDER BY Timestamp ROWS BETWEEN {} PRECEDING AND CURRENT ROW) AS delta_MA{}, "\
+            .format(period - 1, period)
+        delta_view_fields += ", delta_MA{}".format(period)
+    delta_MA_statement = delta_MA_statement.strip(", ")
+
+    delta_MA_statement = "CREATE OR REPLACE VIEW delta_MA(Timestamp{}) AS SELECT Timestamp, ".format(delta_view_fields)\
+        + delta_MA_statement + " FROM {};".format(mysql_table_name)
+
+    cursor.execute(delta_MA_statement)
+
+# Create VIEW for Bollinger Bands
+# upper_BB_dist represents distance between upper band and current price
+# lower_BB_dist represents difference between current price and lower band
+if bollinger_bands_period and bollinger_bands_std:
+    BB_statement = "CREATE OR REPLACE VIEW bollinger_bands(Timestamp, upper_BB_dist, lower_BB_dist) AS SELECT Timestamp, " + \
+      "(BB_avg + {} * BB_std) - 4_close AS upper_BB_dist, ".format(bollinger_bands_std) + \
+      "4_close - (BB_avg - {} * BB_std) AS lower_BB_dist ".format(bollinger_bands_std) + \
+      "FROM (SELECT Timestamp, 4_close, " + \
+      "STD(4_close) OVER (ORDER BY Timestamp ROWS BETWEEN {} PRECEDING AND CURRENT ROW) AS BB_std, ".format(bollinger_bands_period - 1) + \
+      "AVG(4_close) OVER (ORDER BY Timestamp ROWS BETWEEN {} PRECEDING AND CURRENT ROW) AS BB_avg ".format(bollinger_bands_period - 1) + \
+      "FROM {}) AS S;".format(mysql_table_name)
+
+    cursor.execute(BB_statement)
