@@ -2,7 +2,7 @@ import mysql.connector
 from mysql.connector import errorcode
 from config import mysql_user, mysql_password, mysql_hostname, mysql_database_name, mysql_table_name
 from config import bid_levels, ask_levels, get_vix, get_cot, get_stock_volume, event_list, event_values
-from config import volume_MA_periods, price_MA_periods, delta_MA_periods, bollinger_bands_period, bollinger_bands_std
+from config import volume_MA_periods, price_MA_periods, delta_MA_periods, bollinger_bands_period, bollinger_bands_std, stochastic_oscillator
 
 # Connect to MySQL server
 try:
@@ -117,6 +117,9 @@ if delta_MA_periods:
     cursor.execute(delta_MA_statement)
 
 # Create VIEW for Bollinger Bands
+# LaTex formula:
+# upper_BB = (AVG_{n}(P_{close}) + N_{std} \cdot STD_{n}(P_{close})) - P_{close}
+# lower_BB_dist = P_{close} - (AVG_{n}(P_{close}) - N_{std} \cdot STD_{n}(P_{close}))
 # upper_BB_dist represents distance between upper band and current price
 # lower_BB_dist represents difference between current price and lower band
 if bollinger_bands_period and bollinger_bands_std:
@@ -129,3 +132,16 @@ if bollinger_bands_period and bollinger_bands_std:
       "FROM {}) AS S;".format(mysql_table_name)
 
     cursor.execute(BB_statement)
+
+# Create VIEW for Stochastic Oscillator
+# LaTex formula:
+# \frac{P_{close} - MIN_{14}(P_{close})}{MAX_{14}(P_{close}) - MIN_{14}(P_{close})}
+# Returns values in range 0-1
+if stochastic_oscillator:
+    SO_statement = "CREATE OR REPLACE VIEW stochastic_oscillator(Timestamp, stoch) AS SELECT Timestamp, " + \
+      "((4_close - min14) / (max14 - min14)) AS stoch FROM (SELECT Timestamp, 4_close, " + \
+      "MIN(4_close) OVER (ORDER BY Timestamp ROWS BETWEEN 14 PRECEDING AND CURRENT ROW) AS min14, " + \
+      "MAX(4_close) OVER (ORDER BY Timestamp ROWS BETWEEN 14 PRECEDING AND CURRENT ROW) AS max14 " + \
+      "FROM {}) AS S;".format(mysql_table_name)
+
+    cursor.execute(SO_statement)
