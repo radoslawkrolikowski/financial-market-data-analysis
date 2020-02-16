@@ -146,7 +146,11 @@ if stochastic_oscillator:
 
     cursor.execute(SO_statement)
 
-# Select columns of the main table and all VIEWS
+# Select columns of the main table and chosen VIEWS
+cursor.execute("DESCRIBE {};".format(mysql_table_name))
+SD_columns = cursor.fetchall()
+SD_columns = "".join([", sd.{}".format(name[0]) for name in SD_columns if name[0] != "Timestamp"]).strip(", ")
+
 BB_columns = ""
 
 if bollinger_bands_period and bollinger_bands_std:
@@ -175,7 +179,7 @@ if delta_MA_periods:
     delta_columns = cursor.fetchall()
     delta_columns = "".join([", d.{}".format(name[0]) for name in delta_columns if name[0] != "Timestamp"])
 
-join_statement = "SELECT sd.*" + BB_columns + vol_columns + price_columns + delta_columns + \
+join_statement = "SELECT " + SD_columns + BB_columns + vol_columns + price_columns + delta_columns + \
     " FROM " + mysql_table_name + " sd"
 
 if bollinger_bands_period and bollinger_bands_std:
