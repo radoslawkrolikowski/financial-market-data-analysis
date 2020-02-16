@@ -6,16 +6,13 @@ from pyspark.sql import SparkSession
 from pyspark.sql import types
 from pyspark.sql import functions as F
 from pyspark.sql.functions import udf
-from config import event_list, mysql_user, mysql_password
-from config import get_cot, get_vix, get_stock_volume
+from config import event_list, event_values, mysql_user, mysql_password
+from config import mysql_database_name, mysql_table_name, mysql_hostname, mysql_port
+from config import get_cot, get_vix, get_stock_volume, bid_levels, ask_levels
 from kafka import SimpleClient
 from kafka.common import OffsetRequestPayload
 import logging
 
-mysql_hostname = 'localhost'
-mysql_port = '3306'
-mysql_database_name = 'stock_data'
-mysql_table_name = 'stock_data_joined'
 mysql_driver = 'com.mysql.jdbc.Driver'
 mysql_jdbc_url = 'jdbc:mysql://' + mysql_hostname + ':' + mysql_port + '/' + mysql_database_name
 
@@ -116,7 +113,7 @@ df_vix = df_vix.withWatermark("Timestamp_vix", "5 minutes")
 # RESULTING DATA FRAME CONSISTS OF 'N' LATEST AVERAGES INSTEAD OF ONLY RECENT ONE, THUS IT NEEDS ADDITIONAL FILTERING, THEN
 # LATEST MOVING AVERAGE HAVE TO BE JOIN WITH ORIGINAL FRAME. ENTIRE OPERATION IS DIFFICULT AND INEFFICIENT, MOREOVER IN CURRENT
 # VERSION AGGREGATION CAN ONLY BE DONE IN UPDATE MODE, WHILE JOINING IS POSSIBLE ONLY IN APPEND MODE (MUTUALLY EXCLUSIVE OPERATIONS).
-# THEREFOR MOVING AVERAGE WILL BE CALCULATED USING OTHER FRAMEWORK.
+# THEREFOR MOVING AVERAGE WILL BE CALCULATED USING MySQL.
 
 # Create temporary column 'id_timestamp' that contains constantly incremental values with fixed time intervals
 # that represent continuous stream of data (bars or candles on a chart) over which the window will be apllied.
@@ -224,12 +221,9 @@ df_cot = df_cot.withWatermark("Timestamp_cot", "5 minutes")
 #  "Unemployment_Rate": {"Actual": 3.6, "Prev_actual_diff": -0.10000000000000009, "Forc_actual_diff": -0.10000000000000009}}
 schema_ind = types.StructType([types.StructField('Timestamp', types.StringType())])
 
-event_list = [event.replace(" ", "_") for event in event_list]
-values = ["Actual", "Prev_actual_diff", "Forc_actual_diff"]
-
 for field in event_list:
     schema_ind.add(types.StructField(field, types.StructType([
-        types.StructField(ind, types.FloatType()) for ind in values
+        types.StructField(ind, types.FloatType()) for ind in event_values
         ])))
 
 df_ind = spark \
@@ -242,7 +236,7 @@ df_ind = spark \
   .selectExpr("CAST(value AS STRING)") \
   .select(F.from_json(F.col("value"), schema_ind).alias("IND")) \
   .select("IND.Timestamp", *[F.col("IND.{0}.{1}".format(ind, val)).alias("{0}_{1}".format(ind, val)) \
-    for val in values for ind in event_list]) \
+    for val in event_values for ind in event_list]) \
   .withColumn("Timestamp_ind", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
   .drop("Timestamp")
 
@@ -266,10 +260,6 @@ df_ind = df_ind.withWatermark("Timestamp_ind", "5 minutes")
 #  'asks_1': {'ask_1': 332.35, 'ask_1_size': 500},
 #  'asks_2': {'ask_2': 332.38, 'ask_2_size': 500},
 #  'asks_3': {'ask_3': 332.41, 'ask_3_size': 500}}
-
-# Number of price levels to include
-bid_levels = 7
-ask_levels = 7
 
 schema_deep = types.StructType([types.StructField('Timestamp', types.StringType())])
 
@@ -383,6 +373,11 @@ for i in range(ask_levels):
     df_deep = df_deep \
       .withColumnRenamed("bid_{:d}_temp".format(i), "bid_{:d}".format(i))
 
+# Remove level 0 prices (as F.col("ask_0") - ask_0) always returns 0)
+df_deep = df_deep \
+  .drop("ask_0") \
+  .drop("bid_0")
+
 # Extract the day of the week as a number ("u")
 df_deep = df_deep \
   .withColumn("week_day", F.date_format(F.col("Timestamp_deep"), "u").cast("integer"))
@@ -415,7 +410,7 @@ df_deep = df_deep \
   .withColumn("week_4", F.when(F.col("week_of_month") == 4, 1).otherwise(0)) \
   .drop("week_of_month")
 
-# Join all streaming DataFrames together
+# Join streaming DataFrames
 df_joined = df_deep.select("*")
 
 if get_vix:
@@ -461,13 +456,13 @@ df_joined = df_joined \
     .dropDuplicates()
 
 # Write stream to console (debug purposes)
-df_joined.printSchema()
-# df_ind.writeStream.outputMode("append").option("truncate", False).format("console").start()
-df_joined.writeStream.outputMode("append").option("truncate", False).format("console").start().awaitTermination()
+df_volume.printSchema()
+df_volume.writeStream.outputMode("append").option("truncate", False).format("console").start()
 
-# query = df_joined \
-#   .writeStream \
-#   .outputMode('append') \
-#   .foreachBatch(write_stream_to_mysql) \
-#   .start() \
-#   .awaitTermination()
+# Write stream to MySQL/MariaDB
+df_joined \
+  .writeStream \
+  .outputMode('append') \
+  .foreachBatch(write_stream_to_mysql) \
+  .start() \
+  .awaitTermination()
