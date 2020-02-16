@@ -65,7 +65,7 @@ cot_statement = ", Asset_long_pos MEDIUMINT" + \
 
 ind_statement = "".join([", {}_{} FLOAT(5,1)".format(event, value) for event in event_list for value in event_values])
 
-main_statement = "CREATE TABLE IF NOT EXISTS " + mysql_table_name  + "(Timestamp DATETIME PRIMARY KEY"\
+main_statement = "CREATE TABLE IF NOT EXISTS " + mysql_table_name  + "(ID MEDIUMINT KEY AUTO_INCREMENT, Timestamp DATETIME"\
     + deep_statement + vix_statement + vol_statement + cot_statement + ind_statement + ");"
 
 # Create table if not exists
@@ -145,3 +145,101 @@ if stochastic_oscillator:
       "FROM {}) AS S;".format(mysql_table_name)
 
     cursor.execute(SO_statement)
+
+# Select columns of the main table and all VIEWS
+BB_columns = ""
+
+if bollinger_bands_period and bollinger_bands_std:
+    cursor.execute("DESCRIBE bollinger_bands;")
+    BB_columns = cursor.fetchall()
+    BB_columns = "".join([", bb.{}".format(name[0]) for name in BB_columns if name[0] != "Timestamp"])
+
+vol_columns = ""
+
+if volume_MA_periods:
+    cursor.execute("DESCRIBE vol_MA;")
+    vol_columns = cursor.fetchall()
+    vol_columns = "".join([", vol.{}".format(name[0]) for name in vol_columns if name[0] != "Timestamp"])
+
+price_columns = ""
+
+if price_MA_periods:
+    cursor.execute("DESCRIBE price_MA;")
+    price_columns = cursor.fetchall()
+    price_columns = "".join([", p.{}".format(name[0]) for name in price_columns if name[0] != "Timestamp"])
+
+delta_columns = ""
+
+if delta_MA_periods:
+    cursor.execute("DESCRIBE delta_MA;")
+    delta_columns = cursor.fetchall()
+    delta_columns = "".join([", d.{}".format(name[0]) for name in delta_columns if name[0] != "Timestamp"])
+
+join_statement = "SELECT sd.*" + BB_columns + vol_columns + price_columns + delta_columns + \
+    " FROM " + mysql_table_name + " sd"
+
+if bollinger_bands_period and bollinger_bands_std:
+    join_statement += " JOIN bollinger_bands bb ON sd.Timestamp = bb.Timestamp"
+
+if volume_MA_periods:
+    join_statement += " JOIN vol_MA vol ON sd.Timestamp = vol.Timestamp"
+
+if price_MA_periods:
+    join_statement += " JOIN price_MA p ON sd.Timestamp = p.Timestamp"
+
+if delta_MA_periods:
+    join_statement += " JOIN delta_MA d ON sd.Timestamp = d.Timestamp"
+
+join_statement += ";"
+
+# Create new table that consists of the main table columns and all created views
+# This approach requires inserting new values to the table manually!
+
+# new_table_name = "stock_data_full"
+
+# cursor.execute("CREATE TABLE IF NOT EXISTS {} LIKE {};".format(new_table_name, mysql_table_name))
+
+# cursor.execute("DESCRIBE {};".format(new_table_name))
+# tab_columns = cursor.fetchall()
+# tab_columns = [name[0] for name in tab_columns]
+
+# if bollinger_bands_period and bollinger_bands_std:
+#     cursor.execute("DESCRIBE bollinger_bands;")
+#     BB_columns = cursor.fetchall()
+#     BB_columns = [name[0] for name in BB_columns if name[0] != "Timestamp"]
+
+#     # Check if VIEW columns don't already exist in new table
+#     if not any([name in tab_columns for name in BB_columns]):
+#         add_cols = "".join(["ADD COLUMN {} FLOAT(6,2), ".format(name) for name in BB_columns]).strip(", ")
+
+#         cursor.execute("ALTER TABLE {} {};".format(new_table_name, add_cols))
+
+# if volume_MA_periods:
+#     cursor.execute("DESCRIBE vol_MA;")
+#     vol_columns = cursor.fetchall()
+#     vol_columns = [name[0] for name in vol_columns if name[0] != "Timestamp"]
+
+#     if not any([name in tab_columns for name in vol_columns]):
+#         add_cols = "".join(["ADD COLUMN {} FLOAT(14,2), ".format(name) for name in vol_columns]).strip(", ")
+
+#         cursor.execute("ALTER TABLE {} {};".format(new_table_name, add_cols))
+
+# if price_MA_periods:
+#     cursor.execute("DESCRIBE price_MA;")
+#     price_columns = cursor.fetchall()
+#     price_columns = [name[0] for name in price_columns if name[0] != "Timestamp"]
+
+#     if not any([name in tab_columns for name in price_columns]):
+#         add_cols = "".join(["ADD COLUMN {} FLOAT(6,2), ".format(name) for name in price_columns]).strip(", ")
+
+#         cursor.execute("ALTER TABLE {} {};".format(new_table_name, add_cols))
+
+# if delta_MA_periods:
+#     cursor.execute("DESCRIBE delta_MA;")
+#     delta_columns = cursor.fetchall()
+#     delta_columns = [name[0] for name in delta_columns if name[0] != "Timestamp"]
+
+#     if not any([name in tab_columns for name in delta_columns]):
+#         add_cols = "".join(["ADD COLUMN {} FLOAT(6,2), ".format(name) for name in delta_columns]).strip(", ")
+
+#         cursor.execute("ALTER TABLE {} {};".format(new_table_name, add_cols))
