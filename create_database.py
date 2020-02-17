@@ -118,7 +118,7 @@ if delta_MA_periods:
 
 # Create VIEW for Bollinger Bands
 # LaTex formula:
-# upper_BB = (AVG_{n}(P_{close}) + N_{std} \cdot STD_{n}(P_{close})) - P_{close}
+# upper_BB = AVG_{n}(P_{close}) + N_{std} \cdot STD_{n}(P_{close})) - P_{close}
 # lower_BB_dist = P_{close} - (AVG_{n}(P_{close}) - N_{std} \cdot STD_{n}(P_{close}))
 # upper_BB_dist represents distance between upper band and current price
 # lower_BB_dist represents difference between current price and lower band
@@ -145,6 +145,20 @@ if stochastic_oscillator:
       "FROM {}) AS S;".format(mysql_table_name)
 
     cursor.execute(SO_statement)
+
+# Calculate Average True Range (ATR)
+# LaTex formula:
+# AVG_{14}(P_{high} - P_{low})
+atr_statement = "CREATE OR REPLACE VIEW ATR(Timestamp, ATR) AS SELECT Timestamp, " + \
+    "(AVG(2_high - 3_low) OVER (ORDER BY Timestamp ROWS BETWEEN 14 PRECEDING AND CURRENT ROW)) AS ATR" + \
+    " FROM {};".format(mysql_table_name)
+
+cursor.execute(atr_statement)
+
+# Create VIEW with target variables
+# Target variables are determined using following manner:
+# p_close > 3 * ATR -> 0 in 8 bars
+# p_close > 5 * ATR -> 1 in 15 bars
 
 # Select columns of the main table and chosen VIEWS
 cursor.execute("DESCRIBE {};".format(mysql_table_name))
@@ -179,8 +193,17 @@ if delta_MA_periods:
     delta_columns = cursor.fetchall()
     delta_columns = "".join([", d.{}".format(name[0]) for name in delta_columns if name[0] != "Timestamp"])
 
+stoch_columns = ""
+
+if stochastic_oscillator:
+    cursor.execute("DESCRIBE stochastic_oscillator;")
+    stoch_columns = cursor.fetchall()
+    stoch_columns = "".join([", so.{}".format(name[0]) for name in stoch_columns if name[0] != "Timestamp"])
+
+atr_columns = "" # TODO
+
 join_statement = "SELECT " + SD_columns + BB_columns + vol_columns + price_columns + delta_columns + \
-    " FROM " + mysql_table_name + " sd"
+    stoch_columns + atr_columns + " FROM " + mysql_table_name + " sd"
 
 if bollinger_bands_period and bollinger_bands_std:
     join_statement += " JOIN bollinger_bands bb ON sd.Timestamp = bb.Timestamp"
@@ -194,10 +217,13 @@ if price_MA_periods:
 if delta_MA_periods:
     join_statement += " JOIN delta_MA d ON sd.Timestamp = d.Timestamp"
 
-join_statement += ";"
+if stochastic_oscillator:
+    join_statement += " JOIN stochastic_oscillator so ON sd.Timestamp = so.Timestamp"
+
+join_statement += " JOIN ATR ON sd.Timestamp = ATR.Timestamp;"
 
 # Create new table that consists of the main table columns and all created views
-# This approach requires inserting new values to the table manually!
+# This approach requires inserting new values to the table manually!!!
 
 # new_table_name = "stock_data_full"
 
