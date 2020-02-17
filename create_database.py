@@ -157,8 +157,29 @@ cursor.execute(atr_statement)
 
 # Create VIEW with target variables
 # Target variables are determined using following manner:
-# p_close > 3 * ATR -> 0 in 8 bars
-# p_close > 5 * ATR -> 1 in 15 bars
+#                Condition                    |   up1  |   up2  |  down1 |  down2 |
+# --------------------------------------------------------------------------------
+# 8th bar p8_close >= p0_close + (n1 * ATR)   |    1   |    0   |    0   |    0   |
+# 15th bar p15_close >= p0_close + (n2 * ATR) |    0   |    1   |    0   |    0   |
+# 8th bar p8_close <= p0_close - (n1 * ATR)   |    0   |    0   |    1   |    0   |
+# 15th bar p15_close <= p0_close - (n2 * ATR) |    0   |    0   |    0   |    1   |
+
+# Specify ATR factors
+n1 = 1.5
+n2 = 3
+
+target_statement = "CREATE OR REPLACE VIEW target(Timestamp, 4_close, p8_close, p15_close, ATR, up1, up2, down1, down2) " + \
+    "AS SELECT Timestamp, 4_close, p8_close, p15_close, ATR, " + \
+    "CASE WHEN p8_close >= (4_close + ({} * ATR)) THEN 1 ELSE 0 END AS up1, ".format(n1) + \
+    "CASE WHEN p15_close >= (4_close + ({} * ATR)) THEN 1 ELSE 0 END AS up2, ".format(n2) + \
+    "CASE WHEN p8_close <= (4_close - ({} * ATR)) THEN 1 ELSE 0 END AS down1, ".format(n1) + \
+    "CASE WHEN p15_close <= (4_close - ({} * ATR)) THEN 1 ELSE 0 END AS down2 ".format(n2) + \
+    "FROM (SELECT sd.Timestamp, sd.4_close, ATR, " + \
+    "LEAD(4_close, 8) OVER (ORDER BY Timestamp) AS p8_close, " + \
+    "LEAD(4_close, 15) OVER (ORDER BY Timestamp) AS p15_close " + \
+    "FROM " + mysql_table_name + " sd JOIN ATR ON sd.Timestamp = ATR.Timestamp) AS T;"
+
+cursor.exxecute(target_statement)
 
 # Select columns of the main table and chosen VIEWS
 cursor.execute("DESCRIBE {};".format(mysql_table_name))
