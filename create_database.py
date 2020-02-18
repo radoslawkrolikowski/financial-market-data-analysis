@@ -19,10 +19,10 @@ except mysql.connector.Error as err:
 # Instantiate cursor object
 cursor = cnx.cursor()
 
-# Create database if not exists
+# Create database (mysql_database_name) if not exists
 cursor.execute("CREATE DATABASE IF NOT EXISTS {}".format(mysql_database_name))
 
-# Use database
+# Use given database
 cursor.execute("USE {}".format(mysql_database_name))
 
 # Define SQL statements used to create a table
@@ -68,7 +68,7 @@ ind_statement = "".join([", {}_{} FLOAT(5,1)".format(event, value) for event in 
 main_statement = "CREATE TABLE IF NOT EXISTS " + mysql_table_name  + "(ID MEDIUMINT KEY AUTO_INCREMENT, Timestamp DATETIME"\
     + deep_statement + vix_statement + vol_statement + cot_statement + ind_statement + ");"
 
-# Create table if not exists
+# Create table (mysql_table_name) if not exists
 cursor.execute(main_statement)
 
 # Create VIEW with calculated Volume Moving Averages
@@ -136,7 +136,7 @@ if bollinger_bands_period and bollinger_bands_std:
 # Create VIEW for Stochastic Oscillator
 # LaTex formula:
 # \frac{P_{close} - MIN_{14}(P_{close})}{MAX_{14}(P_{close}) - MIN_{14}(P_{close})}
-# Returns values in range 0-1
+# This Stochastic Oscillator returns values in range 0-1 (insted of 0-100)
 if stochastic_oscillator:
     SO_statement = "CREATE OR REPLACE VIEW stochastic_oscillator(Timestamp, stoch) AS SELECT Timestamp, " + \
       "((4_close - min14) / (max14 - min14)) AS stoch FROM (SELECT Timestamp, 4_close, " + \
@@ -168,20 +168,20 @@ cursor.execute(atr_statement)
 n1 = 1.5
 n2 = 3
 
-target_statement = "CREATE OR REPLACE VIEW target(Timestamp, 4_close, p8_close, p15_close, ATR, up1, up2, down1, down2) " + \
-    "AS SELECT Timestamp, 4_close, p8_close, p15_close, ATR, " + \
+target_statement = "CREATE OR REPLACE VIEW target(Timestamp, ID, 4_close, p8_close, p15_close, ATR, " + \
+    "up1, up2, down1, down2) AS SELECT Timestamp, ID, 4_close, p8_close, p15_close, ATR, " + \
     "CASE WHEN p8_close >= (4_close + ({} * ATR)) THEN 1 ELSE 0 END AS up1, ".format(n1) + \
     "CASE WHEN p15_close >= (4_close + ({} * ATR)) THEN 1 ELSE 0 END AS up2, ".format(n2) + \
     "CASE WHEN p8_close <= (4_close - ({} * ATR)) THEN 1 ELSE 0 END AS down1, ".format(n1) + \
     "CASE WHEN p15_close <= (4_close - ({} * ATR)) THEN 1 ELSE 0 END AS down2 ".format(n2) + \
-    "FROM (SELECT sd.Timestamp, sd.4_close, ATR, " + \
+    "FROM (SELECT sd.Timestamp, sd.ID, sd.4_close, ATR, " + \
     "LEAD(4_close, 8) OVER (ORDER BY Timestamp) AS p8_close, " + \
     "LEAD(4_close, 15) OVER (ORDER BY Timestamp) AS p15_close " + \
     "FROM " + mysql_table_name + " sd JOIN ATR ON sd.Timestamp = ATR.Timestamp) AS T;"
 
 cursor.execute(target_statement)
 
-# Select columns of the main table and chosen VIEWS
+# Create query to select columns of the main table and chosen VIEWS
 cursor.execute("DESCRIBE {};".format(mysql_table_name))
 SD_columns = cursor.fetchall()
 SD_columns = "".join([", sd.{}".format(name[0]) for name in SD_columns if name[0] != "Timestamp"]).strip(", ")
@@ -221,7 +221,9 @@ if stochastic_oscillator:
     stoch_columns = cursor.fetchall()
     stoch_columns = "".join([", so.{}".format(name[0]) for name in stoch_columns if name[0] != "Timestamp"])
 
-atr_columns = "" # TODO
+cursor.execute("DESCRIBE ATR;")
+atr_columns = cursor.fetchall()
+atr_columns = "".join([", ATR.{}".format(name[0]) for name in atr_columns if name[0] != "Timestamp"])
 
 join_statement = "SELECT " + SD_columns + BB_columns + vol_columns + price_columns + delta_columns + \
     stoch_columns + atr_columns + " FROM " + mysql_table_name + " sd"
@@ -242,8 +244,6 @@ if stochastic_oscillator:
     join_statement += " JOIN stochastic_oscillator so ON sd.Timestamp = so.Timestamp"
 
 join_statement += " JOIN ATR ON sd.Timestamp = ATR.Timestamp;"
-
-print(join_statement)
 
 # Create new table that consists of the main table columns and all created views
 # This approach requires inserting new values to the table manually!!!
