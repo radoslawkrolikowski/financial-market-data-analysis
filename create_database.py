@@ -157,12 +157,12 @@ cursor.execute(atr_statement)
 
 # Create VIEW with target variables
 # Target variables are determined using following manner:
-#                Condition                    |   up1  |   up2  |  down1 |  down2 |
-# --------------------------------------------------------------------------------
-# 8th bar p8_close >= p0_close + (n1 * ATR)   |    1   |    0   |    0   |    0   |
-# 15th bar p15_close >= p0_close + (n2 * ATR) |    0   |    1   |    0   |    0   |
-# 8th bar p8_close <= p0_close - (n1 * ATR)   |    0   |    0   |    1   |    0   |
-# 15th bar p15_close <= p0_close - (n2 * ATR) |    0   |    0   |    0   |    1   |
+#                Condition                    |  up1  |  up2  | down1 | down2 |
+# -----------------------------------------------------------------------------
+# 8th bar p8_close >= p0_close + (n1 * ATR)   |   1   |   0   |   0   |   0   |
+# 15th bar p15_close >= p0_close + (n2 * ATR) |   0   |   1   |   0   |   0   |
+# 8th bar p8_close <= p0_close - (n1 * ATR)   |   0   |   0   |   1   |   0   |
+# 15th bar p15_close <= p0_close - (n2 * ATR) |   0   |   0   |   0   |   1   |
 
 # Specify ATR factors
 n1 = 1.5
@@ -179,7 +179,7 @@ target_statement = "CREATE OR REPLACE VIEW target(Timestamp, 4_close, p8_close, 
     "LEAD(4_close, 15) OVER (ORDER BY Timestamp) AS p15_close " + \
     "FROM " + mysql_table_name + " sd JOIN ATR ON sd.Timestamp = ATR.Timestamp) AS T;"
 
-cursor.exxecute(target_statement)
+cursor.execute(target_statement)
 
 # Select columns of the main table and chosen VIEWS
 cursor.execute("DESCRIBE {};".format(mysql_table_name))
@@ -242,6 +242,8 @@ if stochastic_oscillator:
     join_statement += " JOIN stochastic_oscillator so ON sd.Timestamp = so.Timestamp"
 
 join_statement += " JOIN ATR ON sd.Timestamp = ATR.Timestamp;"
+
+print(join_statement)
 
 # Create new table that consists of the main table columns and all created views
 # This approach requires inserting new values to the table manually!!!
