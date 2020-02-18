@@ -11,6 +11,7 @@ time_zone = {'EST': pytz.timezone('US/Eastern'),
     'iex_stock': pytz.timezone('US/Eastern'),
     'iex_forex': pytz.timezone('UTC')}
 
+# Specify Kafka brokers addresses and topics to be read from
 kafka_config = {'servers':['localhost:9092'], 'topics': ['vix', 'volume', 'cot', 'ind', 'deep']}
 
 # Scrapy user agent
@@ -44,17 +45,22 @@ delta_MA_periods = [12]
 bollinger_bands_period = 20 # False if not used
 bollinger_bands_std = 2
 
+# Whether to add Stochastic Oscillator
+stochastic_oscillator = True
+
 # List of economic indicators to use
 event_list = ['Crude Oil Inventories', 'ISM Non-Manufacturing PMI', 'ISM Non-Manufacturing Employment',
     'Services PMI', 'ADP Nonfarm Employment Change', 'Core CPI', 'Fed Interest Rate Decision', 'Building Permits',
     'Core Retail Sales', 'Retail Sales', 'JOLTs Job Openings', 'Nonfarm Payrolls', 'Unemployment Rate']
 
+# Create economic indicators message template. New scraped values of indicators will replace corresponding
+# 0 values in this template.
 event_list = [event_name.replace(" ", "_").replace("-", "_") for event_name in event_list]
 event_values = ["Actual", "Prev_actual_diff", "Forc_actual_diff"]
-empty_ind_dict = {"Timestamp": None}
+empty_ind_dict = {"Timestamp": 0}
 
 for event in event_list:
     empty_ind_dict.setdefault(event, {})
     for value in event_values:
-        empty_ind_dict[event].setdefault(value, None)
+        empty_ind_dict[event].setdefault(value, 0)
 
