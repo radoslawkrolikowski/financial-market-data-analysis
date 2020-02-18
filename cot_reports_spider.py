@@ -9,10 +9,22 @@ from datetime import datetime
 import logging
 import json
 
+# Set logger level
 logging.basicConfig(level=logging.DEBUG)
 
 
 class COTCollectorPipeline:
+    """Implementation of the Scrapy Pipeline that sends scraped COT data
+    through Kafka producer.
+
+    Parameters
+    ----------
+    server: list
+        List of Kafka brokers addresses.
+    topic: str
+        Specify Kafka topic to which the stream of data records will be published.
+
+    """
     def __init__(self, server, topic):
         self.server = server
         self.topic = topic
@@ -37,6 +49,9 @@ class COTCollectorPipeline:
 
 
 def to_number(v):
+    """Casts string to int or float
+
+    """
     try:
         if v.isdigit():
             return int(v)
@@ -47,7 +62,26 @@ def to_number(v):
 
 
 class COTreportsSpiderSpider(Spider):
+    """Implementation of the Scrapy Spider that extracts COT data from
+    tradingster.com
 
+    Parameters
+    ----------
+    report_subject: str
+        Specify COT report subject (for example: 'S&P 500 STOCK INDEX' or 'BRITISH POUND STERLING')
+    current_dt: datetime.datetime()
+        Timestamp of real-time data (EST).
+    server: list
+        List of Kafka brokers addresses.
+    topic: str
+        Specify Kafka topic to which the stream of data records will be published.
+
+    Yields
+    ------
+    dict
+        Dictionary that represents scraped item.
+
+    """
     name = 'cot_reports_spider'
     allowed_domains = ['www.tradingster.com']
     start_urls = ['https://www.tradingster.com/cot']
@@ -67,6 +101,9 @@ class COTreportsSpiderSpider(Spider):
         self.topic = topic
 
     def parse(self, response):
+        """Yields the request to URL that contains report_subject's COT report.
+
+        """
         tables = response.xpath(".//table")
 
         for table in tables:
@@ -86,6 +123,9 @@ class COTreportsSpiderSpider(Spider):
                 yield Request(url=report_url, callback=self.parse_report, dont_filter=True)
 
     def parse_report(self, response):
+        """Scraps items from report_subject's COT report.
+
+        """
         rows = response.xpath("//table/tbody/tr")
 
         for row in rows:
@@ -117,6 +157,21 @@ class COTreportsSpiderSpider(Spider):
 
 
 class CrawlerScript(Process):
+    """Runs Spider multiple times within one script by utilizing billiard package
+    (tackle the ReactorNotRestartable error).
+
+    Parameters
+    ----------
+    report_subject: str
+        Specify COT report subject (for example: 'S&P 500 STOCK INDEX' or 'BRITISH POUND STERLING')
+    current_dt: datetime.datetime()
+        Timestamp of real-time data (EST).
+    server: list
+        List of Kafka brokers addresses.
+    topic: str
+        Specify Kafka topic to which the stream of data records will be published.
+
+    """
     def __init__(self, report_subject, current_dt, server, topic):
 
         Process.__init__(self)
