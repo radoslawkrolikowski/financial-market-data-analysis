@@ -9,10 +9,22 @@ from datetime import datetime
 import logging
 import json
 
+# Set logger level
 logging.basicConfig(level=logging.DEBUG)
 
 
 class VIXCollectorPipeline:
+    """Implementation of the Scrapy Pipeline that sends scraped VIX data
+    through Kafka producer.
+
+    Parameters
+    ----------
+    server: list
+        List of Kafka brokers addresses.
+    topic: str
+        Specify Kafka topic to which the stream of data records will be published.
+
+    """
     def __init__(self, server, topic):
         self.server = server
         self.topic = topic
@@ -36,7 +48,23 @@ class VIXCollectorPipeline:
 
 
 class VIXSpiderSpider(Spider):
+    """Implementation of the Scrapy Spider that extracts VIX data from cnbc.com
 
+    Parameters
+    ----------
+    current_dt: datetime.datetime()
+        Timestamp of real-time data (EST).
+    server: list
+        List of Kafka brokers addresses.
+    topic: str
+        Specify Kafka topic to which the stream of data records will be published.
+
+    Yields
+    ------
+    dict
+        Dictionary that represents scraped item.
+
+    """
     name = 'vix_reports_spider'
     allowed_domains = ['www.cnbc.com']
     start_urls = ['https://www.cnbc.com/quotes/?symbol=.VIX']
@@ -62,6 +90,19 @@ class VIXSpiderSpider(Spider):
 
 
 class CrawlerScript(Process):
+    """Runs Spider multiple times within one script by utilizing billiard package
+    (tackle the ReactorNotRestartable error).
+
+    Parameters
+    ----------
+    current_dt: datetime.datetime()
+        Timestamp of real-time data (EST).
+    server: list
+        List of Kafka brokers addresses.
+    topic: str
+        Specify Kafka topic to which the stream of data records will be published.
+
+    """
     def __init__(self, current_dt, server, topic):
 
         Process.__init__(self)
