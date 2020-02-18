@@ -3,7 +3,6 @@ import json
 import pandas as pd
 import io
 import datetime
-import pytz
 import logging
 from config import time_zone
 
@@ -24,8 +23,10 @@ def change_keys(obj, old, new):
 
     return new_obj
 
-# Casts string to int or float
 def to_number(v):
+    """Casts string to int or float
+
+    """
     try:
         if v.isdigit():
             return int(v)
@@ -37,6 +38,7 @@ def to_number(v):
 def value_to_number(obj):
     """Recursively goes through the dictionary obj and converts strings
     to ints or floats if possible.
+
     """
     if isinstance(obj, dict):
         new_obj = obj.__class__()
@@ -88,14 +90,14 @@ class GetData:
             Available HTTP requests: https://iexcloud.io/docs/api/
             The full list of symbols can be found here: https://iextrading.com/trading/eligible-symbols/
         timestamp: datetime.datetime()
-            Timestamp of real-time data.
+            Timestamp of real-time data (EST)
 
         Returns
         -------
         dict / pd.DataFrame
             Dictionary or pandas DataFrame depending on the output_format.
-        """
 
+        """
         self.url = 'https://cloud.iexapis.com/v1{request}token={token}&format={output_format}'\
             .format(request=request, token=self.__token['iex_token'], output_format=self.output_format)
 
@@ -136,8 +138,8 @@ class GetData:
 
     def get_av_data(self, timestamp, function=None, symbol=None, interval=None, request=None):
         """Get the data from the Alpha Vantage API. With INTRADAY functions or FOREX(DAILY, WEEKLY, MONTHLY)
-        returns 100 latest data points, with FOREX(INTRADAY) returns real-time data point, otherwise the time series
-        covering 20+ years of historical data is returned.
+        it returns 100 latest data points, with FOREX(INTRADAY) function returns real-time data point, otherwise
+        the time series covering 20+ years of historical data is returned.
 
         More information about Alpha Vantage API: https://www.alphavantage.co/documentation/
 
@@ -162,9 +164,10 @@ class GetData:
         -------
         dict / pd.DataFrame
             Dictionary or pandas DataFrame depending on the output_format.
-        """
 
+        """
         if not request:
+            # Define FOREX data request
             if function in ['FX_INTRADAY', 'FX_DAILY', 'FX_WEEKLY', 'FX_MONTHLY']:
                 symbol1, symbol2 = symbol[:3], symbol[3:]
                 self.url = 'https://www.alphavantage.co/query?function={function}&from_symbol={symbol1}'\
@@ -196,14 +199,20 @@ class GetData:
                 last_dt = datetime.datetime.strptime(last_dt_str, "%Y-%m-%d %H:%M:%S")
                 last_dt = time_zone['EST'].localize(last_dt)
 
-                # Extract only the last data point
+                # Extract only the latest data point
                 raw_data = raw_data[keys_level_1[1]][last_dt_str]
 
                 if last_dt < timestamp - datetime.timedelta(minutes=4):
                     logging.warning('RETURNED DATA IS DELAYED!')
-                    raw_data['timestamp'] = last_dt_str
+                    # Beacuse of the high API usage the latest returned data point can be delayed.
+                    # In that case, returned data point usually contains values that represent only
+                    # the fraction of proper values (for example volume of 5 minute bar can be order of
+                    # magnitud lower than expected).
+                    # Nevertheless to avoid data gaps, we will allow delayed data to be used as current one.
+                    raw_data['Timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
+                    # raw_data['Timestamp'] = last_dt_str
                 else:
-                    raw_data['timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
+                    raw_data['Timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
 
             else:
                 raw_data = pd.read_csv(io.StringIO(req.content.decode('utf-8')))
@@ -211,16 +220,18 @@ class GetData:
                 if 'Error Message' in raw_data.iloc[0, 0]:
                     raise Exception(raw_data.iloc[0, 0])
 
-                # Extract only the last data point
+                # Extract only the latest data point
                 raw_data = raw_data.iloc[0:1, :]
-                last_dt_str = raw_data.loc[0, 'timestamp']
+                last_dt_str = raw_data.loc[0, 'Timestamp']
                 last_dt = datetime.datetime.strptime(last_dt_str, "%Y-%m-%d %H:%M:%S")
-                last_dt = pytz.utc.localize(last_dt).astimezone(time_zone['EST'])
+                last_dt = time_zone['EST'].localize(last_dt)
 
                 if last_dt < timestamp - datetime.timedelta(minutes=4):
                     logging.warning('RETURNED DATA IS DELAYED!')
+                    # Accept delayed data!
+                    raw_data.iloc[0, 'Timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
                 else:
-                    raw_data.iloc[0, 'timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
+                    raw_data.iloc[0, 'Timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
 
 
         except requests.exceptions.ConnectionError as msg:
