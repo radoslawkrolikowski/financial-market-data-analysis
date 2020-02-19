@@ -146,6 +146,13 @@ if stochastic_oscillator:
 
     cursor.execute(SO_statement)
 
+# Calculate price change
+price_change_statement = "CREATE OR REPLACE VIEW price_change(Timestamp, price_change) AS SELECT Timestamp, " + \
+    "(4_close - LAG(4_close, 1) OVER (ORDER BY Timestamp)) AS price_change" + \
+    " FROM {};".format(mysql_table_name)
+
+cursor.execute(price_change_statement)
+
 # Calculate Average True Range (ATR)
 # LaTex formula:
 # AVG_{14}(P_{high} - P_{low})
@@ -168,15 +175,15 @@ cursor.execute(atr_statement)
 n1 = 1.5
 n2 = 3
 
-target_statement = "CREATE OR REPLACE VIEW target(Timestamp, ID, 4_close, p8_close, p15_close, ATR, " + \
-    "up1, up2, down1, down2) AS SELECT Timestamp, ID, 4_close, p8_close, p15_close, ATR, " + \
-    "CASE WHEN p8_close >= (4_close + ({} * ATR)) THEN 1 ELSE 0 END AS up1, ".format(n1) + \
-    "CASE WHEN p15_close >= (4_close + ({} * ATR)) THEN 1 ELSE 0 END AS up2, ".format(n2) + \
-    "CASE WHEN p8_close <= (4_close - ({} * ATR)) THEN 1 ELSE 0 END AS down1, ".format(n1) + \
-    "CASE WHEN p15_close <= (4_close - ({} * ATR)) THEN 1 ELSE 0 END AS down2 ".format(n2) + \
-    "FROM (SELECT sd.Timestamp, sd.ID, sd.4_close, ATR, " + \
-    "LEAD(4_close, 8) OVER (ORDER BY Timestamp) AS p8_close, " + \
-    "LEAD(4_close, 15) OVER (ORDER BY Timestamp) AS p15_close " + \
+target_statement = "CREATE OR REPLACE VIEW target(Timestamp, ID, p0_close, p8_close, p15_close, ATR, " + \
+    "up1, up2, down1, down2) AS SELECT Timestamp, ID, p0_close, p8_close, p15_close, ATR, " + \
+    "CASE WHEN p8_close >= (p0_close + ({} * ATR)) THEN 1 ELSE 0 END AS up1, ".format(n1) + \
+    "CASE WHEN p15_close >= (p0_close + ({} * ATR)) THEN 1 ELSE 0 END AS up2, ".format(n2) + \
+    "CASE WHEN p8_close <= (p0_close - ({} * ATR)) THEN 1 ELSE 0 END AS down1, ".format(n1) + \
+    "CASE WHEN p15_close <= (p0_close - ({} * ATR)) THEN 1 ELSE 0 END AS down2 ".format(n2) + \
+    "FROM (SELECT sd.Timestamp, sd.ID, sd.4_close AS p0_close, ATR, " + \
+    "LEAD(sd.4_close, 8) OVER (ORDER BY Timestamp) AS p8_close, " + \
+    "LEAD(sd.4_close, 15) OVER (ORDER BY Timestamp) AS p15_close " + \
     "FROM " + mysql_table_name + " sd JOIN ATR ON sd.Timestamp = ATR.Timestamp) AS T;"
 
 cursor.execute(target_statement)
@@ -225,8 +232,12 @@ cursor.execute("DESCRIBE ATR;")
 atr_columns = cursor.fetchall()
 atr_columns = "".join([", ATR.{}".format(name[0]) for name in atr_columns if name[0] != "Timestamp"])
 
+cursor.execute("DESCRIBE price_change;")
+price_change_columns = cursor.fetchall()
+price_change_columns = "".join([", pc.{}".format(name[0]) for name in price_change_columns if name[0] != "Timestamp"])
+
 join_statement = "SELECT " + SD_columns + BB_columns + vol_columns + price_columns + delta_columns + \
-    stoch_columns + atr_columns + " FROM " + mysql_table_name + " sd"
+    stoch_columns + atr_columns + price_change_columns + " FROM " + mysql_table_name + " sd"
 
 if bollinger_bands_period and bollinger_bands_std:
     join_statement += " JOIN bollinger_bands bb ON sd.Timestamp = bb.Timestamp"
@@ -243,7 +254,7 @@ if delta_MA_periods:
 if stochastic_oscillator:
     join_statement += " JOIN stochastic_oscillator so ON sd.Timestamp = so.Timestamp"
 
-join_statement += " JOIN ATR ON sd.Timestamp = ATR.Timestamp;"
+join_statement += " JOIN ATR ON sd.Timestamp = ATR.Timestamp JOIN price_change pc ON sd.Timestamp = pc.Timestamp;"
 
 # Create new table that consists of the main table columns and all created views
 # This approach requires inserting new values to the table manually!!!
