@@ -26,9 +26,9 @@ cursor.execute("CREATE DATABASE IF NOT EXISTS {}".format(mysql_database_name))
 cursor.execute("USE {}".format(mysql_database_name))
 
 # Define SQL statements used to create a table
-deep_statement = "".join([", bid_{:d}_size SMALLINT".format(level) for level in range(bid_levels)]) + \
+deep_statement = "".join([", bid_{:d}_size MEDIUMINT".format(level) for level in range(bid_levels)]) + \
     "".join([", bid_{:d} FLOAT(6,2)".format(level) for level in range(1, bid_levels)]) + \
-    "".join([", ask_{:d}_size SMALLINT".format(level) for level in range(ask_levels)]) + \
+    "".join([", ask_{:d}_size MEDIUMINT".format(level) for level in range(ask_levels)]) + \
     "".join([", ask_{:d} FLOAT(6,2)".format(level) for level in range(1, ask_levels)]) + \
     ", bids_ord_WA FLOAT(6,4), asks_ord_WA FLOAT(6,4)" + \
     ", vol_imbalance FLOAT(7,4)" + \
