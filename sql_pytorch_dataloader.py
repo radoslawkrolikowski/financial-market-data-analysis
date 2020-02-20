@@ -190,8 +190,8 @@ class MySQLBatchLoader(Dataset):
 
     Parameters
     ----------
-    indices: tuple
-        Tuple of database indices that form given chunk.
+    indices: range
+        Range of database indices that form given chunk.
     norm_params: tuple(torch.Tensor)
         Tuple of pytorch Tensors containing normalization parameters of a given chunk.
     cursor: mysql.connector.cursor_cext.CMySQLCursor
@@ -218,6 +218,8 @@ class MySQLBatchLoader(Dataset):
     def __init__(self, indices, norm_params, cursor, table, db_x_query, y_fields, window):
 
         super(MySQLBatchLoader, self).__init__()
+
+        indices = tuple(indices)
 
         # Extarct x_fields from db_query
         db_x_query = [w.strip(",") for w in db_x_query.split()]
@@ -253,3 +255,73 @@ class MySQLBatchLoader(Dataset):
 
     def __len__(self):
         return len(self.x)
+
+
+class TrainValTestSplit:
+    def __init__(self, dataset, val_size=0.1, test_size=0.1):
+        """Performs Train/Validation/Test spliting of a set of data chunks,
+        which means that val_size and test_size parameters refere to number of
+        chunks (not to total number of data points!)
+
+        For example if we have 800 data poins, chunk size of 50 will give us
+        16 chunks. If we use val_size=0.1 and test_size=0.1 then spliting will be
+        performed in follwoing manner:
+        train_set - will contain 0.8 * 16 chunks = 12 chunks
+        val_size - (0.1 * 16) + 1 = 2 chunks
+        test_size - (0.1 * 16) + 1 = 2 chunks
+
+        Parameters
+        ----------
+        dataset: MySQLBatchLoader
+            MySQLBatchLoader object
+        val_size: float, optional (defaul=0.1)
+            Validation set size as a fraction of number of data chunks.
+        test_size: float, optional (defaul=0.1)
+            Test set size as a fraction of number of data chunks.
+
+        Returns
+        -------
+        training set, validation set, test set that each comprise of:
+                chunk_indices[idx]: tuple
+                    Range of database indices that form given chunk.
+                norm_params[idx]:  tuple(torch.Tensor)
+                    Tuple of pytorch Tensors containing normalization parameters of a given chunk.
+
+        Raises
+        ------
+        AssertionError
+            If the val_size and test_size sum is greater or equal 1 or the negative value was passed.
+
+        """
+        assert (val_size + test_size) < 1, 'Validation size and test size sum is greater or equal 1'
+        assert val_size >= 0 and test_size >= 0, 'Negative size is not accepted'
+
+        self.dataset = dataset
+        self.train_size = 1 - val_size - test_size
+        self.val_size = val_size
+        self.test_size = test_size
+
+        self.dataset_len = len(self.dataset)
+
+    def get_train(self):
+        self.train_end_idx = int(self.train_size * self.dataset_len)
+        train_set_ind = self.dataset[0:self.train_end_idx][0]
+        train_set_norms = self.dataset[0:self.train_end_idx][1]
+        return zip(train_set_ind, train_set_norms)
+
+    def get_val(self):
+        self.val_start_idx = self.train_end_idx
+        self.val_end_idx = self.val_start_idx + int(self.val_size * self.dataset_len) + 1
+        val_set_ind = self.dataset[self.val_start_idx:self.val_end_idx][0]
+        val_set_norms = self.dataset[self.val_start_idx:self.val_end_idx][1]
+        return zip(val_set_ind, val_set_norms)
+
+    def get_test(self):
+        self.test_start_idx = self.val_end_idx
+        self.test_end_idx = self.test_start_idx + int(self.test_size * self.dataset_len) + 1
+        test_set_ind = self.dataset[self.test_start_idx:self.test_end_idx][0]
+        test_set_norms = self.dataset[self.test_start_idx:self.test_end_idx][1]
+        return zip(test_set_ind, test_set_norms)
+
+    def get_sets(self):
+        return self.get_train(), self.get_val(), self.get_test()
