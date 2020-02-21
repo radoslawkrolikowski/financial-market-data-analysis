@@ -104,6 +104,14 @@ class MySQLChunkLoader(Dataset):
 
             x_max = torch.Tensor(cursor.fetchall())
 
+            # In order to perform normalization we have to ensure that MIN != MAX
+            for i, _ in enumerate(zip(x_min[0], x_max[0])):
+                if x_min[0][i] == x_max[0][i]:
+                    if x_max[0][i] != 0:
+                        x_max[0][i] += x_max[0][i] * 0.001
+                    else:
+                        x_max[0][i] += 0.001
+
             self.norm_params.append((x_min, x_max))
 
         # Save last chunk's normalization params to file
