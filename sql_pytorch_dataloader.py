@@ -1,29 +1,9 @@
 import torch
 import pickle
-import mysql.connector
 from torch.utils.data import Dataset
-from mysql.connector import errorcode
 from itertools import islice
-from config import mysql_user, mysql_password, mysql_hostname, mysql_database_name
 from config import bid_levels, ask_levels
 
-# Connect to MySQL server
-try:
-    cnx = mysql.connector.connect(host=mysql_hostname, user=mysql_user, password=mysql_password)
-except mysql.connector.Error as err:
-    if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-        print("User name or password incorrect")
-    else:
-        print(err)
-    # Close connection
-    cnx.close()
-    print('Connection closed')
-
-# Instantiate cursor object
-db_cursor = cnx.cursor()
-
-# Use given database
-db_cursor.execute("USE {};".format(mysql_database_name))
 
 def window_indices(seq, n=2):
     """Returns a sliding window (of width n) over iterable (seq).
@@ -101,7 +81,7 @@ class MySQLChunkLoader(Dataset):
         db_x_query = [w.strip(",") for w in db_x_query.split()]
         fields_start_idx = db_x_query.index("SELECT")
         fields_end_idx = db_x_query.index("FROM")
-        x_fields = db_x_query[fields_start_idx + 1: fields_end_idx]
+        self.x_fields = db_x_query[fields_start_idx + 1: fields_end_idx]
 
         # Extract FROM table statement
         from_start_idx = db_x_query.index("FROM")
@@ -110,7 +90,7 @@ class MySQLChunkLoader(Dataset):
         # Calculate chunk's MIN and MAX values used in data normalization
         self.norm_params = []
 
-        x_min_fields = "".join(["MIN({}), ".format(i) for i in x_fields]).strip(", ")
+        x_min_fields = "".join(["MIN({}), ".format(i) for i in self.x_fields]).strip(", ")
         x_max_fields = x_min_fields.replace("MIN", "MAX")
 
         for chunk in range(self.num_chunks + 1):
@@ -129,7 +109,7 @@ class MySQLChunkLoader(Dataset):
         # Save last chunk's normalization params to file
         params_dict = {}
 
-        for i, name in enumerate(x_fields):
+        for i, name in enumerate(self.x_fields):
             params_dict[name] = {"MIN": self.norm_params[-1][0][0][i], "MAX": self.norm_params[-1][1][0][i]}
 
         with open("norm_params", "wb") as file:
@@ -137,7 +117,7 @@ class MySQLChunkLoader(Dataset):
 
         # Exctract MIN and MAX with respect to all order book levels
         # Then assign these values to be MIN and MAX that represent entire book in given chunk
-        if "sd.bid_0_size" in x_fields:
+        if "sd.bid_0_size" in self.x_fields:
 
             ask = ["sd.ask_{}_size".format(i) for i in range(ask_levels)]
             bid = ["sd.bid_{}_size".format(i) for i in range(bid_levels)]
@@ -145,14 +125,14 @@ class MySQLChunkLoader(Dataset):
             ask_idx = []
             for i in ask:
                 try:
-                    ask_idx.append(x_fields.index(i))
+                    ask_idx.append(self.x_fields.index(i))
                 except ValueError:
                     continue
 
             bid_idx = []
             for i in bid:
                 try:
-                    bid_idx.append(x_fields.index(i))
+                    bid_idx.append(self.x_fields.index(i))
                 except ValueError:
                     continue
 
@@ -211,8 +191,10 @@ class MySQLBatchLoader(Dataset):
     -------
     x[[indices]]: torch.Tensor
         Tensor of generated sliding windows of input varaibales.
-    y[[indices]]: torch.Tensor
-        Tensor of generated sliding windows of target varaibales.
+    y[[indices[-1]]]: torch.Tensor
+        Tensor of target variables. Sliding window target corresponds to the right answer of last data point
+        of that window. For example for window [5.,6.,7.,8.,9.] the target is [9.] (target variable with id of 9),
+        for [6.,7.,8.,9.,10.] target is [10.] and so on.
 
     """
     def __init__(self, indices, norm_params, cursor, table, db_x_query, y_fields, window):
@@ -251,48 +233,50 @@ class MySQLBatchLoader(Dataset):
 
     def __getitem__(self, idx):
         indices = next(self.indices_gen)
-        return self.x[[indices]], self.y[[indices]]
+        return self.x[[indices]], self.y[[indices[-1]]]
 
     def __len__(self):
         return len(self.x)
 
 
 class TrainValTestSplit:
+    """Performs Train/Validation/Test spliting of a set of data chunks,
+    which means that val_size and test_size parameters refere to number of
+    chunks (not to total number of data points!)
+
+    For example if we have 800 data poins, chunk size of 50 will give us
+    16 chunks. If we use val_size=0.1 and test_size=0.1 then spliting will be
+    performed in following manner:
+    train_set - will contain 0.8 * 16 chunks = 12 chunks
+    val_size - (0.1 * 16) + 1 = 2 chunks
+    test_size - (0.1 * 16) + 1 = 2 chunks
+
+    Parameters
+    ----------
+    dataset: MySQLBatchLoader
+        MySQLBatchLoader object
+    val_size: float, optional (defaul=0.1)
+        Validation set size as a fraction of number of data chunks.
+    test_size: float, optional (defaul=0.1)
+        Test set size as a fraction of number of data chunks.
+
+    Returns
+    -------
+    training set, validation set, test set that each comprise of:
+            chunk_indices[idx]: range
+                Range of database indices that form given chunk.
+            norm_params[idx]:  tuple(torch.Tensor)
+                Tuple of pytorch Tensors containing normalization parameters of a given chunk.
+
+    Raises
+    ------
+    AssertionError
+        If the val_size and test_size sum is greater or equal 1 or the negative value was passed.
+
+    """
+
     def __init__(self, dataset, val_size=0.1, test_size=0.1):
-        """Performs Train/Validation/Test spliting of a set of data chunks,
-        which means that val_size and test_size parameters refere to number of
-        chunks (not to total number of data points!)
 
-        For example if we have 800 data poins, chunk size of 50 will give us
-        16 chunks. If we use val_size=0.1 and test_size=0.1 then spliting will be
-        performed in follwoing manner:
-        train_set - will contain 0.8 * 16 chunks = 12 chunks
-        val_size - (0.1 * 16) + 1 = 2 chunks
-        test_size - (0.1 * 16) + 1 = 2 chunks
-
-        Parameters
-        ----------
-        dataset: MySQLBatchLoader
-            MySQLBatchLoader object
-        val_size: float, optional (defaul=0.1)
-            Validation set size as a fraction of number of data chunks.
-        test_size: float, optional (defaul=0.1)
-            Test set size as a fraction of number of data chunks.
-
-        Returns
-        -------
-        training set, validation set, test set that each comprise of:
-                chunk_indices[idx]: tuple
-                    Range of database indices that form given chunk.
-                norm_params[idx]:  tuple(torch.Tensor)
-                    Tuple of pytorch Tensors containing normalization parameters of a given chunk.
-
-        Raises
-        ------
-        AssertionError
-            If the val_size and test_size sum is greater or equal 1 or the negative value was passed.
-
-        """
         assert (val_size + test_size) < 1, 'Validation size and test size sum is greater or equal 1'
         assert val_size >= 0 and test_size >= 0, 'Negative size is not accepted'
 
