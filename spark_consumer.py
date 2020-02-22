@@ -16,13 +16,16 @@ import logging
 mysql_driver = 'com.mysql.jdbc.Driver'
 mysql_jdbc_url = 'jdbc:mysql://' + mysql_hostname + ':' + mysql_port + '/' + mysql_database_name
 
-# Instantiate spark session
-# We have to add the following jars to intergrate spark with kafka:
+# Instantiate spark session.
+# We have to add the following jars to intergrate Spark with Kafka:
 # spark-sql-kafka, kafka-clients, spark-streaming-kafka-0-10-assembly
-# where 0-10 is the kafka broker version, 2.11-2.4.4 is spark version,
+# where 0-10 is the Kafka broker version, 2.11-2.4.4 is Spark version,
 # use proper jars according to your versions.
 # To integrate with MySQL/MariaDB we have to add the following file:
-# mysql-connector-java-5.1.48.jar
+# mysql-connector-java-5.1.48.jar.
+# For testing we will run Spark locally with one worker thread (master("local"))
+# Other options to run Spark (locally, on cluster) can be found here:
+# http://spark.apache.org/docs/latest/submitting-applications.html#master-urls
 spark = SparkSession.builder \
     .master("local") \
     .appName("Stock_data_streaming") \
@@ -260,7 +263,6 @@ df_ind = df_ind.withWatermark("Timestamp_ind", "5 minutes")
 #  'asks_1': {'ask_1': 332.35, 'ask_1_size': 500},
 #  'asks_2': {'ask_2': 332.38, 'ask_2_size': 500},
 #  'asks_3': {'ask_3': 332.41, 'ask_3_size': 500}}
-
 schema_deep = types.StructType([types.StructField('Timestamp', types.StringType())])
 
 for i in range(bid_levels):
@@ -288,6 +290,9 @@ df_deep = spark \
         ['DEEP.asks_{0:d}.ask_{0:d}_size'.format(i) for i in range(ask_levels)]) \
   .withColumn("Timestamp_deep", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
   .drop("Timestamp")
+
+# Fill missing values
+df_deep = df_deep.fillna(0)
 
 # Round timestamps down to nearest 5 minutes
 df_deep = df_deep \
@@ -349,11 +354,11 @@ df_deep = df_deep \
 # Calculate the bid and ask price relative to best values
 for i, price in enumerate(asks_prices):
     df_deep = df_deep \
-      .withColumn("ask_{:d}_temp".format(i), (F.col("ask_0") - price))
+      .withColumn("ask_{:d}_temp".format(i), F.when(price != 0, F.col("ask_0") - price).otherwise(0))
 
 for i, price in enumerate(bids_prices):
     df_deep = df_deep \
-      .withColumn("bid_{:d}_temp".format(i), (F.col("bid_0") - price))
+      .withColumn("bid_{:d}_temp".format(i), F.when(price != 0, F.col("bid_0") - price).otherwise(0))
 
 # Drop old price levels
 for i in range(ask_levels):
@@ -456,8 +461,8 @@ df_joined = df_joined \
     .dropDuplicates()
 
 # Write stream to console (debug purposes)
-df_volume.printSchema()
-df_volume.writeStream.outputMode("append").option("truncate", False).format("console").start()
+# df_deep.printSchema()
+# df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()#.awaitTermination()
 
 # Write stream to MySQL/MariaDB
 df_joined \
