@@ -32,7 +32,7 @@ deep_statement = "".join([", bid_{:d}_size MEDIUMINT".format(level) for level in
     "".join([", ask_{:d} FLOAT(6,2)".format(level) for level in range(1, ask_levels)]) + \
     ", bids_ord_WA FLOAT(6,4), asks_ord_WA FLOAT(6,4)" + \
     ", vol_imbalance FLOAT(7,4)" + \
-    ", delta SMALLINT" + \
+    ", delta MEDIUMINT" + \
     ", micro_price FLOAT(6,2)" + \
     ", spread FLOAT(6,4)" + \
     ", session_start TINYINT" + \
@@ -191,7 +191,7 @@ cursor.execute(target_statement)
 # Create query to select columns of the main table and chosen VIEWS
 cursor.execute("DESCRIBE {};".format(mysql_table_name))
 SD_columns = cursor.fetchall()
-SD_columns = "".join([", sd.{}".format(name[0]) for name in SD_columns if name[0] != "Timestamp"]).strip(", ")
+SD_columns = "".join([", sd.{}".format(name[0]) for name in SD_columns if name[0] != "Timestamp" and name[0] != "ID"]).strip(", ")
 
 BB_columns = ""
 
