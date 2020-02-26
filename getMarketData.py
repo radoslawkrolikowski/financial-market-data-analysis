@@ -247,7 +247,7 @@ class GetData:
 
 
 def get_market_calendar():
-    """Returns market calandar of current month. Hours in Eastern Time (ET).
+    """Returns market calendar of the current month. Hours in Eastern Time (ET).
 
     """
     response = requests.get('https://api.tradier.com/v1/markets/calendar',
