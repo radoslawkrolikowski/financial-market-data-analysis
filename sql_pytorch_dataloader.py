@@ -77,7 +77,7 @@ class MySQLChunkLoader(Dataset):
             else:
                 self.chunk_indices.append(range(chunk_size * chunk - window + 1, db_length + 1))
 
-        # Extarct x_fields from db_x_query
+        # Extract x_fields from db_x_query
         db_x_query = [w.strip(",") for w in db_x_query.split()]
         fields_start_idx = db_x_query.index("SELECT")
         fields_end_idx = db_x_query.index("FROM")
@@ -114,16 +114,7 @@ class MySQLChunkLoader(Dataset):
 
             self.norm_params.append((x_min, x_max))
 
-        # Save last chunk's normalization params to file
-        params_dict = {}
-
-        for i, name in enumerate(self.x_fields):
-            params_dict[name] = {"MIN": self.norm_params[-1][0][0][i], "MAX": self.norm_params[-1][1][0][i]}
-
-        with open("norm_params", "wb") as file:
-            pickle.dump(params_dict, file)
-
-        # Exctract MIN and MAX with respect to all order book levels
+        # Extract MIN and MAX with respect to all order book levels
         # Then assign these values to be MIN and MAX that represent entire book in given chunk
         if "sd.bid_0_size" in self.x_fields:
 
@@ -151,6 +142,15 @@ class MySQLChunkLoader(Dataset):
                 if bid_idx:
                     x_min[0][bid_idx] = min(x_min[0][bid_idx])
                     x_max[0][bid_idx] = max(x_max[0][bid_idx])
+
+        # Save last chunk's normalization parameters to file
+        params_dict = {}
+
+        for i, name in enumerate(self.x_fields):
+            params_dict[name] = {"MIN": self.norm_params[-1][0][0][i], "MAX": self.norm_params[-1][1][0][i]}
+
+        with open("norm_params", "wb") as file:
+            pickle.dump(params_dict, file)
 
     def __getitem__(self, idx):
         return tuple(self.chunk_indices[idx]), self.norm_params[idx]
@@ -211,7 +211,7 @@ class MySQLBatchLoader(Dataset):
 
         indices = tuple(indices)
 
-        # Extarct x_fields from db_query
+        # Extract x_fields from db_query
         db_x_query = [w.strip(",") for w in db_x_query.split()]
         fields_start_idx = db_x_query.index("SELECT")
         fields_end_idx = db_x_query.index("FROM")
@@ -248,7 +248,7 @@ class MySQLBatchLoader(Dataset):
 
 
 class TrainValTestSplit:
-    """Performs Train/Validation/Test spliting of a set of data chunks,
+    """Performs Train/Validation/Test splitting of a set of data chunks,
     which means that val_size and test_size parameters refere to number of
     chunks (not to total number of data points!)
 
