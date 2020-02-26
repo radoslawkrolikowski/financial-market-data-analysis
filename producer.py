@@ -3,7 +3,9 @@ import time
 import pytz
 import logging
 import json
+import pickle
 from kafka import KafkaProducer
+from collections import defaultdict
 from config import tokens, time_zone, kafka_config, event_list
 from config import get_cot, get_vix, get_stock_volume
 from getMarketData import GetData, get_market_calendar
@@ -101,6 +103,10 @@ def intraday_data(freq, market_hours, current_datetime, source, tokens, economic
     producer = KafkaProducer(bootstrap_servers=kafka_config['servers'],
         value_serializer=lambda x:
         json.dumps(x).encode('utf-8'))
+
+    # Create economic indicators registry at the start of each session
+    with open(r"items.pickle", "wb") as output_file:
+        pickle.dump(defaultdict(), output_file)
 
     while (current_datetime >= market_hours['market_start']) and (current_datetime <= market_hours['market_end']):
 
