@@ -11,8 +11,8 @@ time_zone = {'EST': pytz.timezone('US/Eastern'),
     'iex_stock': pytz.timezone('US/Eastern'),
     'iex_forex': pytz.timezone('UTC')}
 
-# Specify Kafka brokers addresses and topics to be read from
-kafka_config = {'servers':['localhost:9092'], 'topics': ['vix', 'volume', 'cot', 'ind', 'deep']}
+# Specify Kafka brokers addresses and topics
+kafka_config = {'servers':['localhost:9092'], 'topics': ['vix', 'volume', 'cot', 'ind', 'deep', 'predict_timestamp', 'prediction']}
 
 # Scrapy user agent
 user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:69.0) Gecko/20100101 Firefox/69.0'
@@ -55,11 +55,11 @@ event_list = ['Crude Oil Inventories', 'ISM Non-Manufacturing PMI', 'ISM Non-Man
 
 # Create economic indicators message template. New scraped values of indicators will replace corresponding
 # 0 values in this template.
-event_list = [event_name.replace(" ", "_").replace("-", "_") for event_name in event_list]
+event_list_repl = [event_name.replace(" ", "_").replace("-", "_") for event_name in event_list]
 event_values = ["Actual", "Prev_actual_diff", "Forc_actual_diff"]
 empty_ind_dict = {"Timestamp": 0}
 
-for event in event_list:
+for event in event_list_repl:
     empty_ind_dict.setdefault(event, {})
     for value in event_values:
         empty_ind_dict[event].setdefault(value, 0)
