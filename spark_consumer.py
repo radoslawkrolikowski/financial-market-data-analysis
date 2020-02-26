@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import types
 from pyspark.sql import functions as F
 from pyspark.sql.functions import udf
-from config import event_list, event_values, mysql_user, mysql_password
+from config import event_list, event_values, mysql_user, mysql_password, kafka_config
 from config import mysql_database_name, mysql_table_name, mysql_hostname, mysql_port
 from config import get_cot, get_vix, get_stock_volume, bid_levels, ask_levels
 from kafka import SimpleClient
@@ -23,20 +23,20 @@ mysql_jdbc_url = 'jdbc:mysql://' + mysql_hostname + ':' + mysql_port + '/' + mys
 # use proper jars according to your versions.
 # To integrate with MySQL/MariaDB we have to add the following file:
 # mysql-connector-java-5.1.48.jar.
-# For testing we will run Spark locally with one worker thread (master("local"))
+# For testing we will run Spark locally with one worker thread (.master("local"))
 # Other options to run Spark (locally, on cluster) can be found here:
 # http://spark.apache.org/docs/latest/submitting-applications.html#master-urls
 spark = SparkSession.builder \
     .master("local") \
     .appName("Stock_data_streaming") \
-    .config("spark.jars", "file:///root/Downloads/jar_files/spark-sql-kafka-0-10_2.11-2.4.4.jar,"\
-        "file:///root/Downloads/jar_files/kafka-clients-2.0.0.jar,"\
-        "file:///root/Downloads/jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar,"\
-        "file:///root/Downloads/jar_files/mysql-connector-java-5.1.48.jar") \
-    .config("spark.driver.extraClassPath", "file:///root/Downloads/jar_files/spark-sql-kafka-0-10_2.11-2.4.4.jar,"\
-        "file:///root/Downloads/jar_files/kafka-clients-2.0.0.jar,"\
-        "file:///root/Downloads/jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar,"\
-        "file:///root/Downloads/jar_files/mysql-connector-java-5.1.48.jar") \
+    .config("spark.jars", "jar_files/spark-sql-kafka-0-10_2.11-2.4.4.jar,"\
+        "jar_files/kafka-clients-2.0.0.jar,"\
+        "jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar,"\
+        "jar_files/mysql-connector-java-5.1.48.jar") \
+    .config("spark.driver.extraClassPath", "jar_files/spark-sql-kafka-0-10_2.11-2.4.4.jar,"\
+        "jar_files/kafka-clients-2.0.0.jar,"\
+        "jar_files/spark-streaming-kafka-0-10-assembly_2.11-2.1.1.jar,"\
+        "jar_files/mysql-connector-java-5.1.48.jar") \
     .getOrCreate()
 
 # Set number of output partitions (low values speed up processing)
@@ -94,8 +94,8 @@ schema_vix = types.StructType([
 df_vix = spark \
   .readStream \
   .format("kafka") \
-  .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "vix") \
+  .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
+  .option("subscribe", kafka_config['topics'][0]) \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
@@ -153,8 +153,8 @@ schema_volume = types.StructType([
 df_volume = spark \
   .readStream \
   .format("kafka") \
-  .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "volume") \
+  .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
+  .option("subscribe", kafka_config['topics'][1]) \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
@@ -201,8 +201,8 @@ for field in ['Asset', 'Leveraged']:
 df_cot = spark \
   .readStream \
   .format("kafka") \
-  .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "cot") \
+  .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
+  .option("subscribe", kafka_config['topics'][2]) \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
@@ -232,8 +232,8 @@ for field in event_list:
 df_ind = spark \
   .readStream \
   .format("kafka") \
-  .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "ind") \
+  .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
+  .option("subscribe", kafka_config['topics'][3]) \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
@@ -278,8 +278,8 @@ for i in range(ask_levels):
 df_deep = spark \
   .readStream \
   .format("kafka") \
-  .option("kafka.bootstrap.servers", "localhost:9092, localhost:9093, localhost:9094") \
-  .option("subscribe", "deep") \
+  .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
+  .option("subscribe", kafka_config['topics'][4]) \
   .option("startingOffsets", "latest") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
@@ -460,14 +460,28 @@ df_joined = df_joined \
     .withColumnRenamed("Timestamp_deep", "Timestamp") \
     .dropDuplicates()
 
-# Write stream to console (debug purposes)
-# df_deep.printSchema()
-# df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()#.awaitTermination()
-
 # Write stream to MySQL/MariaDB
 df_joined \
   .writeStream \
   .outputMode('append') \
   .foreachBatch(write_stream_to_mysql) \
   .start() \
+  # .awaitTermination()
+
+# Extract current Timestamp and send it to kafka 'predict_timestamp' topic to signal
+# to Pytorch model readiness to make a prediction for current datapoint.
+df_kafka_signal = df_joined \
+  .select(F.to_json(F.struct("Timestamp")).alias("value")) \
+
+df_kafka_signal \
+  .writeStream \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
+  .option("topic", kafka_config['topics'][5]) \
+  .option("checkpointLocation", "checkpoint") \
+  .start() \
   .awaitTermination()
+
+# Write stream to console (debug purposes)
+# df_deep.printSchema()
+# df_deep.writeStream.outputMode("append").option("truncate", False).format("console").start()#.awaitTermination()
