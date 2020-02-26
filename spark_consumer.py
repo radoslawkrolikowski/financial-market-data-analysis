@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import types
 from pyspark.sql import functions as F
 from pyspark.sql.functions import udf
-from config import event_list, event_values, mysql_user, mysql_password, kafka_config
+from config import event_list_repl, event_values, mysql_user, mysql_password, kafka_config
 from config import mysql_database_name, mysql_table_name, mysql_hostname, mysql_port
 from config import get_cot, get_vix, get_stock_volume, bid_levels, ask_levels
 from kafka import SimpleClient
@@ -224,7 +224,7 @@ df_cot = df_cot.withWatermark("Timestamp_cot", "5 minutes")
 #  "Unemployment_Rate": {"Actual": 3.6, "Prev_actual_diff": -0.10000000000000009, "Forc_actual_diff": -0.10000000000000009}}
 schema_ind = types.StructType([types.StructField('Timestamp', types.StringType())])
 
-for field in event_list:
+for field in event_list_repl:
     schema_ind.add(types.StructField(field, types.StructType([
         types.StructField(ind, types.FloatType()) for ind in event_values
         ])))
@@ -239,7 +239,7 @@ df_ind = spark \
   .selectExpr("CAST(value AS STRING)") \
   .select(F.from_json(F.col("value"), schema_ind).alias("IND")) \
   .select("IND.Timestamp", *[F.col("IND.{0}.{1}".format(ind, val)).alias("{0}_{1}".format(ind, val)) \
-    for val in event_values for ind in event_list]) \
+    for val in event_values for ind in event_list_repl]) \
   .withColumn("Timestamp_ind", F.to_timestamp(F.col("Timestamp"), "yyyy-MM-dd HH:mm:ss")) \
   .drop("Timestamp")
 
