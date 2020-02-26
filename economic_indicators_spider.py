@@ -45,7 +45,7 @@ class IndicatorCollectorPipeline:
                 self.prev_items = pickle.load(output_file)
         except (OSError, IOError):
             with open(r"items.pickle", "wb") as output_file:
-                pickle.dump({}, output_file)
+                pickle.dump(defaultdict(), output_file)
 
         # Instantiate Kafka producer
         self.producer = KafkaProducer(bootstrap_servers=server,
@@ -78,6 +78,9 @@ class IndicatorCollectorPipeline:
             # Remove "Schedule_datetime" and "Event" fields from new items,
             # and then insert them into message template (replace 0 values)
             for item in new_items:
+
+                self.prev_items.setdefault((item['Schedule_datetime'], item['Event']), item)
+
                 del item['Schedule_datetime']
                 del item['Event']
 
@@ -90,7 +93,7 @@ class IndicatorCollectorPipeline:
 
         # Save sent items to file
         with open(r"items.pickle", "wb") as output_file:
-            pickle.dump(self.items_dict, output_file)
+            pickle.dump(self.prev_items, output_file)
 
 
 class EconomicIndicatorsSpiderSpider(Spider):
@@ -118,7 +121,6 @@ class EconomicIndicatorsSpiderSpider(Spider):
         Dictionary that represents scraped item.
 
     """
-
     name = 'economic_indicators_spider'
     allowed_domains = ['www.investing.com']
     start_urls = ['https://www.investing.com/economic-calendar/']
