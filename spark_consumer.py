@@ -97,6 +97,7 @@ df_vix = spark \
   .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
   .option("subscribe", kafka_config['topics'][0]) \
   .option("startingOffsets", "latest") \
+  .option("failOnDataLoss", "false") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
   .select(F.from_json(F.col("value"), schema_vix).alias("VIX")) \
@@ -156,6 +157,7 @@ df_volume = spark \
   .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
   .option("subscribe", kafka_config['topics'][1]) \
   .option("startingOffsets", "latest") \
+  .option("failOnDataLoss", "false") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
   .select(F.from_json(F.col("value"), schema_volume).alias("Volume")) \
@@ -204,6 +206,7 @@ df_cot = spark \
   .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
   .option("subscribe", kafka_config['topics'][2]) \
   .option("startingOffsets", "latest") \
+  .option("failOnDataLoss", "false") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
   .withColumn("value", F.explode(F.array("value"))) \
@@ -235,6 +238,7 @@ df_ind = spark \
   .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
   .option("subscribe", kafka_config['topics'][3]) \
   .option("startingOffsets", "latest") \
+  .option("failOnDataLoss", "false") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
   .select(F.from_json(F.col("value"), schema_ind).alias("IND")) \
@@ -281,6 +285,7 @@ df_deep = spark \
   .option("kafka.bootstrap.servers", ", ".join(kafka_config['servers'])) \
   .option("subscribe", kafka_config['topics'][4]) \
   .option("startingOffsets", "latest") \
+  .option("failOnDataLoss", "false") \
   .load() \
   .selectExpr("CAST(value AS STRING)") \
   .select(F.from_json(F.col("value"), schema_deep).alias("DEEP")) \
