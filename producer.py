@@ -51,8 +51,8 @@ def market_hour_to_dt(current_datetime, hour_str):
 
 def intraday_data(freq, market_hours, current_datetime, source, tokens, economic_data, cot=False, vix=False, request=None,\
                   function=None, symbol=None, interval=None, output_format='json', get_stock_volume=None):
-    """Get the intraday data from Alpha Vantage or IEX APIs. Function will call the source API with
-    the frequency of 'freq' until market is closed.
+    """Gets the intraday market data from Alpha Vantage, IEX APIs, economic indicators, COT data and VIX.
+     Function will call the source API with the frequency of 'freq' until market is closed.
 
     Parameters
     ----------
@@ -261,6 +261,4 @@ economic_data = {'countries': ['United States'], 'importance': ['1', '2', '3'], 
 
 start_day_session(freq, 'IEX', tokens, economic_data, cot=get_cot, vix=get_vix, request='/deep/book?symbols=spy&',
     get_stock_volume=get_stock_volume)
-
-producer = KafkaProducer(bootstrap_servers=kafka_config['servers'], value_serializer=lambda x: json.dumps(x).encode('utf-8'))
 
