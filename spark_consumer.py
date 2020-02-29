@@ -113,11 +113,11 @@ df_vix = df_vix \
 # Apply watermark
 df_vix = df_vix.withWatermark("Timestamp_vix", "5 minutes")
 
-# PYSPARK IN VERSION 2.4.4 IS NOT CAPABLE OF CALCULATING EFFICIENTLY MOVING AVERAGE. DESPITE USING WINDOW FUNCTION, THE
-# RESULTING DATA FRAME CONSISTS OF 'N' LATEST AVERAGES INSTEAD OF ONLY RECENT ONE, THUS IT NEEDS ADDITIONAL FILTERING, THEN
-# LATEST MOVING AVERAGE HAVE TO BE JOIN WITH ORIGINAL FRAME. ENTIRE OPERATION IS DIFFICULT AND INEFFICIENT, MOREOVER IN CURRENT
-# VERSION AGGREGATION CAN ONLY BE DONE IN UPDATE MODE, WHILE JOINING IS POSSIBLE ONLY IN APPEND MODE (MUTUALLY EXCLUSIVE OPERATIONS).
-# THEREFOR MOVING AVERAGE WILL BE CALCULATED USING MySQL.
+# Below is the code to calculate the Moving Average for VIX using a Spark Structured Streaming Window function.
+# A temporary variable id_timestamp will be used to simulate fixed time intervals. The result of window operation (moving average)
+# subsequently has to be joined with the original data frame.
+# In this application there is a need to perform many such window aggregations, however in Spark 2.4.4 multiple streaming aggregations
+# are not yet supported on Streaming DataFrame, thus this functionality has to be moved to MariaDB.
 
 # Create temporary column 'id_timestamp' that contains constantly incremental values with fixed time intervals
 # that represent continuous stream of data (bars or candles on a chart) over which the window will be apllied.
@@ -132,11 +132,22 @@ df_vix = df_vix.withWatermark("Timestamp_vix", "5 minutes")
 # id_timestamp_seconds = 20 sec (equals number_of_data_points)
 # 20 sec = 20 data_points, time_interval = 1 second
 
-# windowedCounts = df_vix \
-#     .withWatermark("id_timestamp", "20 seconds") \
+# windowedAVG = df_vix \
+#     .withWatermark("id_timestamp", "0 seconds") \
 #     .groupBy(
 #         F.window("id_timestamp", "20 seconds", "1 seconds")) \
-#     .avg("VIX")
+#     .avg("VIX") \
+#     .select("window.end", "avg(VIX)")
+
+# df_vix = df_vix.withWatermark("id_timestamp", "0 seconds")
+
+# df_joined = windowedAVG \
+#   .join(df_vix,  F.expr("""
+#     (end = id_timestamp AND
+#     id_timestamp >= end AND
+#     id_timestamp <= end + interval 1 seconds)
+#     """), "leftOuter")
+
 
 # Define Volume schema
 # {'1_open': 334.02, '2_high': 334.11, '3_low': 333.91, '4_close': 333.96,
