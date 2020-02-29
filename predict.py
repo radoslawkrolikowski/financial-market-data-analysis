@@ -193,5 +193,5 @@ for message in consumer:
             pred_dict = {"timestamp": timestamp_str, "probabilities": pred, "prob_threshold": prob_threshold,
                 "pred_indices": pred_idx, "pred_labels": pred_labels}
 
-            # Send predictions to Kafka topic
+            # Send predictions to Kafka topic ('predict')
             producer.send(topic=kafka_config['topics'][6], value=pred_dict)
