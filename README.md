@@ -143,7 +143,7 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 
 * [create_database](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
 
-	    Creates a 'stock_data' database that stores in the main table, processed by Spark application data, but also performs further feature extraction using SQL views. The following are the created additional features:
+	 Creates a 'stock_data' database that stores in the main table, processed by Spark application data, but also performs further feature extraction using SQL views. The following are the created additional features:
 
 	- Volume Moving Averages
 	- Price Moving Averages
