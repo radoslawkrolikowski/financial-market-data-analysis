@@ -63,7 +63,7 @@ cot_statement = ", Asset_long_pos MEDIUMINT" + \
     ", Leveraged_short_pos_change FLOAT(6,1)" + \
     ", Leveraged_short_open_int FLOAT(4,1)" if get_cot else ""
 
-ind_statement = "".join([", {}_{} FLOAT(5,1)".format(event, value) for event in event_list for value in event_values])
+ind_statement = "".join([", {}_{} FLOAT(8,3)".format(event, value) for event in event_list for value in event_values])
 
 main_statement = "CREATE TABLE IF NOT EXISTS " + mysql_table_name  + "(ID MEDIUMINT KEY AUTO_INCREMENT, Timestamp DATETIME"\
     + deep_statement + vix_statement + vol_statement + cot_statement + ind_statement + ");"
