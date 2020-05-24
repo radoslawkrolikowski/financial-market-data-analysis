@@ -1,7 +1,7 @@
 import mysql.connector
 from mysql.connector import errorcode
 from config import mysql_user, mysql_password, mysql_hostname, mysql_database_name, mysql_table_name
-from config import bid_levels, ask_levels, get_vix, get_cot, get_stock_volume, event_list, event_values
+from config import bid_levels, ask_levels, get_vix, get_cot, get_stock_volume, event_list_repl, event_values
 from config import volume_MA_periods, price_MA_periods, delta_MA_periods, bollinger_bands_period, bollinger_bands_std, stochastic_oscillator
 
 # Connect to MySQL server
@@ -33,8 +33,8 @@ deep_statement = "".join([", bid_{:d}_size MEDIUMINT".format(level) for level in
     ", bids_ord_WA FLOAT(6,4), asks_ord_WA FLOAT(6,4)" + \
     ", vol_imbalance FLOAT(7,4)" + \
     ", delta MEDIUMINT" + \
-    ", micro_price FLOAT(6,2)" + \
-    ", spread FLOAT(6,4)" + \
+    ", micro_price FLOAT(7,2)" + \
+    ", spread FLOAT(7,4)" + \
     ", session_start TINYINT" + \
     ", day_1 TINYINT" + \
     ", day_2 TINYINT" + \
@@ -63,7 +63,7 @@ cot_statement = ", Asset_long_pos MEDIUMINT" + \
     ", Leveraged_short_pos_change FLOAT(6,1)" + \
     ", Leveraged_short_open_int FLOAT(4,1)" if get_cot else ""
 
-ind_statement = "".join([", {}_{} FLOAT(8,3)".format(event, value) for event in event_list for value in event_values])
+ind_statement = "".join([", {}_{} FLOAT(8,3)".format(event, value) for event in event_list_repl for value in event_values])
 
 main_statement = "CREATE TABLE IF NOT EXISTS " + mysql_table_name  + "(ID MEDIUMINT KEY AUTO_INCREMENT, Timestamp DATETIME"\
     + deep_statement + vix_statement + vol_statement + cot_statement + ind_statement + ");"
