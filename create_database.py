@@ -26,44 +26,45 @@ cursor.execute("CREATE DATABASE IF NOT EXISTS {}".format(mysql_database_name))
 cursor.execute("USE {}".format(mysql_database_name))
 
 # Define SQL statements used to create a table
-deep_statement = "".join([", bid_{:d}_size MEDIUMINT".format(level) for level in range(bid_levels)]) + \
-    "".join([", bid_{:d} FLOAT(6,2)".format(level) for level in range(1, bid_levels)]) + \
-    "".join([", ask_{:d}_size MEDIUMINT".format(level) for level in range(ask_levels)]) + \
-    "".join([", ask_{:d} FLOAT(6,2)".format(level) for level in range(1, ask_levels)]) + \
-    ", bids_ord_WA FLOAT(6,4), asks_ord_WA FLOAT(6,4)" + \
-    ", vol_imbalance FLOAT(7,4)" + \
-    ", delta MEDIUMINT" + \
-    ", micro_price FLOAT(7,2)" + \
-    ", spread FLOAT(7,4)" + \
-    ", session_start TINYINT" + \
-    ", day_1 TINYINT" + \
-    ", day_2 TINYINT" + \
-    ", day_3 TINYINT" + \
-    ", day_4 TINYINT" + \
-    ", week_1 TINYINT" + \
-    ", week_2 TINYINT" + \
-    ", week_3 TINYINT" + \
-    ", week_4 TINYINT"
+deep_statement = "".join([", bid_{:d}_size MEDIUMINT NOT NULL".format(level) for level in range(bid_levels)]) + \
+    "".join([", bid_{:d} FLOAT(6,2) NOT NULL".format(level) for level in range(1, bid_levels)]) + \
+    "".join([", ask_{:d}_size MEDIUMINT NOT NULL".format(level) for level in range(ask_levels)]) + \
+    "".join([", ask_{:d} FLOAT(6,2) NOT NULL".format(level) for level in range(1, ask_levels)]) + \
+    ", bids_ord_WA FLOAT(6,4), asks_ord_WA FLOAT(6,4) NOT NULL" + \
+    ", vol_imbalance FLOAT(7,4) NOT NULL" + \
+    ", delta MEDIUMINT NOT NULL" + \
+    ", micro_price FLOAT(7,2) NOT NULL" + \
+    ", spread FLOAT(7,4) NOT NULL" + \
+    ", session_start TINYINT NOT NULL" + \
+    ", day_1 TINYINT NOT NULL" + \
+    ", day_2 TINYINT NOT NULL" + \
+    ", day_3 TINYINT NOT NULL" + \
+    ", day_4 TINYINT NOT NULL" + \
+    ", week_1 TINYINT NOT NULL" + \
+    ", week_2 TINYINT NOT NULL" + \
+    ", week_3 TINYINT NOT NULL" + \
+    ", week_4 TINYINT NOT NULL"
 
-vix_statement = ", VIX FLOAT(5,2)" if get_vix else ""
+vix_statement = ", VIX FLOAT(5,2) NOT NULL" if get_vix else ""
 
-vol_statement = ", 1_open FLOAT(6,2), 2_high FLOAT(6,2), 3_low FLOAT(6,2), 4_close FLOAT(6,2), 5_volume INT, wick_prct FLOAT(6,4)"\
+vol_statement = ", 1_open FLOAT(6,2) NOT NULL, 2_high FLOAT(6,2) NOT NULL, 3_low FLOAT(6,2) NOT NULL"\
+    ", 4_close FLOAT(6,2) NOT NULL, 5_volume INT NOT NULL, wick_prct FLOAT(6,4) NOT NULL"\
     if get_stock_volume else ""
 
-cot_statement = ", Asset_long_pos MEDIUMINT" + \
-    ", Asset_long_pos_change FLOAT(6,1)" + \
-    ", Asset_long_open_int FLOAT(4,1)" + \
-    ", Asset_short_pos MEDIUMINT" + \
-    ", Asset_short_pos_change FLOAT(6,1)" + \
-    ", Asset_short_open_int FLOAT(4,1)" + \
-    ", Leveraged_long_pos MEDIUMINT" + \
-    ", Leveraged_long_pos_change FLOAT(6,1)" + \
-    ", Leveraged_long_open_int FLOAT(4,1)" + \
-    ", Leveraged_short_pos MEDIUMINT" + \
-    ", Leveraged_short_pos_change FLOAT(6,1)" + \
-    ", Leveraged_short_open_int FLOAT(4,1)" if get_cot else ""
+cot_statement = ", Asset_long_pos MEDIUMINT NOT NULL" + \
+    ", Asset_long_pos_change FLOAT(6,1) NOT NULL" + \
+    ", Asset_long_open_int FLOAT(4,1) NOT NULL" + \
+    ", Asset_short_pos MEDIUMINT NOT NULL" + \
+    ", Asset_short_pos_change FLOAT(6,1) NOT NULL" + \
+    ", Asset_short_open_int FLOAT(4,1) NOT NULL" + \
+    ", Leveraged_long_pos MEDIUMINT NOT NULL" + \
+    ", Leveraged_long_pos_change FLOAT(6,1) NOT NULL" + \
+    ", Leveraged_long_open_int FLOAT(4,1) NOT NULL" + \
+    ", Leveraged_short_pos MEDIUMINT NOT NULL" + \
+    ", Leveraged_short_pos_change FLOAT(6,1) NOT NULL" + \
+    ", Leveraged_short_open_int FLOAT(4,1) NOT NULL" if get_cot else ""
 
-ind_statement = "".join([", {}_{} FLOAT(8,3)".format(event, value) for event in event_list_repl for value in event_values])
+ind_statement = "".join([", {}_{} FLOAT(8,3) NOT NULL".format(event, value) for event in event_list_repl for value in event_values])
 
 main_statement = "CREATE TABLE IF NOT EXISTS " + mysql_table_name  + "(ID MEDIUMINT KEY AUTO_INCREMENT, Timestamp DATETIME"\
     + deep_statement + vix_statement + vol_statement + cot_statement + ind_statement + ");"
