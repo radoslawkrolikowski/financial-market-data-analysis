@@ -215,7 +215,8 @@ class MySQLBatchLoader(Dataset):
         db_x_query = [w.strip(",") for w in db_x_query.split()]
         fields_start_idx = db_x_query.index("SELECT")
         fields_end_idx = db_x_query.index("FROM")
-        x_fields = ", ".join(db_x_query[fields_start_idx + 1: fields_end_idx]).strip(", ")
+        x_fields = db_x_query[fields_start_idx + 1: fields_end_idx]
+        x_fields_not_null = ", ".join("IFNULL({}, 0)".format(field) for field in x_fields).strip(", ")
 
         # Extract FROM table statement
         from_start_idx = db_x_query.index("FROM")
@@ -224,7 +225,7 @@ class MySQLBatchLoader(Dataset):
         # Fetch X (independent variables) from database
         # To use different set of columns modify SQL db_x_query
         cursor.execute("SELECT {} {} WHERE ID IN {};"\
-               .format(x_fields, from_statement, indices))
+               .format(x_fields_not_null, from_statement, indices))
 
         self.x = torch.Tensor(cursor.fetchall())
 
