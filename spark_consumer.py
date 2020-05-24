@@ -365,7 +365,7 @@ df_deep = df_deep \
 
 # Bid-Ask Spread
 df_deep = df_deep \
-  .withColumn("spread", F.col("bid_0") - F.col('ask_0'))
+  .withColumn("spread", F.when((F.col("ask_0") != 0) & (F.col("bid_0") != 0), F.col("bid_0") - F.col('ask_0')).otherwise(0))
 
 # Calculate the bid and ask price relative to best values
 for i, price in enumerate(asks_prices):
@@ -475,6 +475,9 @@ df_joined = df_joined \
     .drop("Timestamp_deep_floor") \
     .withColumnRenamed("Timestamp_deep", "Timestamp") \
     .dropDuplicates()
+
+# Fill missing values
+df_joined = df_joined.fillna(0)
 
 # Write stream to MySQL/MariaDB
 df_joined \
