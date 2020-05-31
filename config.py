@@ -3,8 +3,8 @@
 """
 import pytz
 
-tokens = {'av_token': '6CK0W5ZFDAUWX0DQ',
-    'iex_token': 'pk_e01ee438a3b545818531ea9d669ddee0'}
+tokens = {'av_token': '<Your-token>',
+    'iex_token': '<Your-token>'}
 
 time_zone = {'EST': pytz.timezone('US/Eastern'),
     'UTC': pytz.timezone('UTC'),

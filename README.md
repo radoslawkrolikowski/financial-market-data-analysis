@@ -27,11 +27,11 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 
 ### Architecture
 
-![Architecture](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/assets/app-architecture.png)
+![Architecture](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/assets/app-architecture.png)
 
 ### Table of contents
 
-* [getMarketData](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [getMarketData](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/getMarketData.py)
  	
     Performs call to IEX Cloud and Alpha Vantage API to retrieve specified financial data and also returns market calendar of the current month.
 
@@ -43,7 +43,7 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 	Alpha Vantage is the provider of free APIs for realtime and historical data on stocks, forex (FX), and digital/crypto currencies. To get more information browse through the AV docs here: <https://www.alphavantage.co/documentation/>
 
 
-* [economic_indicators_spider](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [economic_indicators_spider](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/economic_indicators_spider.py)
  	
 	The implementation of Scrapy Spider that extracts economic indicators from Investing.com Economic Calendar. You can select particular indicators by specifying Countries of interest, importance level and list of events to be considered. Allows to fetch economic indicators such as:
 	- Core Retail Sales
@@ -56,13 +56,13 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 	- New Home Sales
 	- and many others 
 
-* [vix_spider](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [vix_spider](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/vix_spider.py)
  	
 	The implementation of the Scrapy Spider that extracts VIX data from cnbc.com.
 
 	VIX (CBOE Volatility Index)  is a calculation designed to produce a measure of constant, 30-day expected volatility of the U.S. stock market, derived from real-time, mid-quote prices of S&P 500® Index (SPXSM) call and put options (<http://www.cboe.com/vix>)
 
-* [cot_reports_spider](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [cot_reports_spider](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/cot_reports_spider.py)
  	
 	The Scrapy Spider that extracts Commitment of Traders (COT) Reports data from tradingster.com. 
 
@@ -80,7 +80,7 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
     
 	COT reports are most commonly used in long-term trading (weekly, daily time frames)
 
-* [config](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [config](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/config.py)
  	
 	The configuration file that includes: 
 	- IEX and Alpha Vantage tokens
@@ -94,12 +94,12 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 		- Specify period and number of standard deviations for Bollinger Bands
 		- Specify Moving Averages periods
 
-* [producer](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [producer](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/producer.py)
  	
    	The producer instantiates day session and gets the intraday market data from Alpha Vantage and IEX Cloud APIs, it also runs Scrapy Spiders to fetch economic indicators, COT Reports data and VIX. The producer will call the source API and extract data from web sources with the frequency specified by the user (interval) until the market is closed. The collected data subsequently creates a set of streams that are published to corresponding Kafka topics.
 
 
-* [spark_consumer](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [spark_consumer](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/spark_consumer.py)
 
   	The distributed streaming Pyspark application that is responsible for following tasks:
 
@@ -141,9 +141,9 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 	All unsupported operations are listed here <https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html#unsupported-operations>
 
 
-* [create_database](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [create_database](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/create_database.py)
 
-	    Creates a 'stock_data' database that stores in the main table, processed by Spark application data, but also performs further feature extraction using SQL views. The following are the created additional features:
+	 Creates a 'stock_data' database that stores in the main table, processed by Spark application data, but also performs further feature extraction using SQL views. The following are the created additional features:
 
 	- Volume Moving Averages
 	- Price Moving Averages
@@ -163,11 +163,11 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 
 	You can generate different target variables by modifying SQL <i>target_statement</i>
 
-* [biGRU_model](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [biGRU_model](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/biGRU_model.py)
 
 	Implementation of the bidirectional Gated Recurrent Unit neural network Pytorch model.
 
-* [sql_pytorch_dataloader](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [sql_pytorch_dataloader](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/sql_pytorch_dataloader.py)
 
   Implementation of the custom Pytorch Dataset that loads data from MySQL/MariaDB database and consists of MySQLChunkLoader and MySQLBatchLoader. 
 
@@ -175,7 +175,7 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 
  	The file also includes implementation of the TrainValTestSplit class that performs Train/Validation/Test splitting of a set of data chunks.
 
-* [predict](https://github/radoslawkrolikowski/sentiment-analysis-pytorch/blob/master/1_data_processing.ipynb)
+* [predict](https://github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/predict.py)
 
   Reads the latest data point from MySQL/MariaDB database based on the current timestamp value that is sent from Spark application through Kafka, performs real-time data normalization and prediction using trained Pytroch model. 
 
