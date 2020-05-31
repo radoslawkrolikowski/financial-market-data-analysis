@@ -179,7 +179,7 @@ Data provided by [IEX Cloud]( https://iexcloud.io)
 
   Reads the latest data point from MySQL/MariaDB database based on the current timestamp value that is sent from Spark application through Kafka, performs real-time data normalization and prediction using trained Pytroch model. 
 
-* [biGRU_model_training](https://nbviewer.jupyter.org//github.com/radoslawkrolikowski/financial-market-data-analysis/blob/master/biGRU_model_training.ipynb)
+* [biGRU_model_training](https://nbviewer.jupyter.org/github/radoslawkrolikowski/financial-market-data-analysis/blob/master/biGRU_model_training.ipynb)
 
   Jupyter notebook showing the process of creating and training the BiGRU model.
 
