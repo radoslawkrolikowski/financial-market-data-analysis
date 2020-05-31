@@ -189,6 +189,9 @@ class GetData:
             if self.output_format == 'json':
                 raw_data = json.loads(req.content)
 
+                if not raw_data:
+                    raise Exception("Alpha Vantage API currently not available!")
+
                 if 'Error Message' in raw_data:
                     raise Exception(raw_data['Error Message'])
 
@@ -233,17 +236,16 @@ class GetData:
                 else:
                     raw_data.iloc[0, 'Timestamp'] = datetime.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S")
 
+            # Get rid of unwanted characters from dictionary keys
+            raw_data = change_keys(raw_data, ". ", "_")
+
+            # Cast string to int or float if possible
+            raw_data = value_to_number(raw_data)
+
+            return raw_data
 
         except requests.exceptions.ConnectionError as msg:
             print(msg)
-
-        # Get rid of unwanted characters from dictionary keys
-        raw_data = change_keys(raw_data, ". ", "_")
-
-        # Cast string to int or float if possible
-        raw_data = value_to_number(raw_data)
-
-        return raw_data
 
 
 def get_market_calendar():
